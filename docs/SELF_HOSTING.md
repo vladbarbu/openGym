@@ -1029,6 +1029,25 @@ Push services like a contact address for whoever runs the server, in case they e
 you about your pushes. openGym sends your `ORIGIN` by default; set `VAPID_SUBJECT=mailto:you@example.com`
 in `.env` if you would rather they had an inbox.
 
+### Friends leaderboard
+
+Set `LEADERBOARD_INVITE_CODE` in `.env` to a random code of 16–128 characters
+(`openssl rand -hex 16` works). From a full checkout with the leaderboard changes,
+run `docker compose up -d --build` to build the images and apply the new environment.
+Share the code with friends who have their own openGym profiles on that server.
+They can join from **Stats → Leaderboard**. The board includes past synced
+workouts, and members can leave at any time to remove their results.
+
+The exercise boards rank completed working sets for catalogue lifts. The
+heaviest day combines working-set volume across that day's workouts, and
+consistency ranks consecutive Monday-start weeks with at least three training
+days. Monthly filters count the training dates within the selected month.
+
+Turn on **Settings → Notifications → Push notifications** in a supported
+browser or the Home Screen web app on iOS. The recap links to the previous
+month's standings and is sent once per eligible member starting at 09:00 UTC on
+the first of each month. Members can turn the recap off on the leaderboard page.
+
 ### Push endpoints on private addresses (`ALLOWED_PRIVATE_IPS`)
 
 The api container resolves push service domains to the IPs. Private IPs are banned by default.

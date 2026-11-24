@@ -45,6 +45,7 @@ import { integrationRoutes } from './integrations/routes.js';
 import { buildIcs } from './integrations/calendar.js';
 import { deriveKey, seal as sealText, open as openSealed } from './integrations/crypto.js';
 import { excusedOn, nudgeFor, nudgeWindowOpen, toneOf } from './nudge.js';
+import { leaderboard, leaderboardMember, leaderboardMonth, leaderboardRecap, monthToNotify, previousLeaderboardMonth } from './leaderboard.js';
 import { wrappedPushYear, wrappedSummary, wrappedPushOwed, wrappedPush } from './wrapped.js';
 import { createOrgStore } from './trainers/org-store.js';
 import { trainerRoutes } from './trainers/routes.js';
@@ -91,6 +92,10 @@ function claimFirstAdmin(req, user) {
   user.owner = true;
   audit(req, 'admin.first-user', { user });
 }
+const leaderboardCode = process.env.LEADERBOARD_INVITE_CODE?.trim();
+const leaderboardInviteHash = leaderboardCode && leaderboardCode.length >= 16 && leaderboardCode.length <= 128
+  ? crypto.createHash('sha256').update(leaderboardCode).digest()
+  : null;
 // Guest mode ("Continue without account") keeps everything in the browser and never touches this
 // server — but on an instance meant for a known set of people, an entrance nobody can walk back
 // out of is still the wrong front door (#42). Default ON, so existing instances are unchanged;
@@ -655,7 +660,9 @@ function wrappedTick(user, sum, year) {
 }
 setInterval(() => {
   // Server time, read through Date.now() so the tests' clock moves it too.
-  const wrappedYear = wrappedPushYear(new Date(Date.now()));
+  const date = new Date(Date.now());
+  const wrappedYear = wrappedPushYear(date);
+  const recapMonth = leaderboardInviteHash && monthToNotify(date);
   for (const user of db.users) {
     if (user.disabled) continue;            // locked out everywhere, reminders included
     if (!db.subs.some(s => s.userId === user.id)) continue;
@@ -663,6 +670,17 @@ setInterval(() => {
     // skipped, not allowed to take the process — and everyone else's reminders — down with it.
     // PUT /api/data refuses the obvious shapes, but a file already on disk answers to nobody.
     try {
+      const recap = leaderboardRecap(user, recapMonth);
+      if (recap) {
+        const previousRecap = user.leaderboardRecap;
+        user.leaderboardRecap = recapMonth;
+        try { saveDb(); }
+        catch (error) {
+          user.leaderboardRecap = previousRecap;
+          throw error;
+        }
+        sendPush(user.id, recap);
+      }
       const sum = stateSummary(user.id);
       if (wrappedYear && sum && user.wrappedPush !== wrappedYear) wrappedTick(user, sum, wrappedYear);
       if (sum?.chk?.on) checkinTick(user, sum);
@@ -2193,6 +2211,8 @@ setInterval(() => {
 }, 600000).unref();
 // Every one of these makes the server send pushes, one per subscription of the account. A
 // person taps "send test" a few times and starts a rest after each set; a loop does neither.
+const leaderboardAttempts = createWindow({ max: 10, windowMs: 60000 });
+setInterval(() => leaderboardAttempts.sweep(), 60000).unref();
 const PUSH_TESTS = createWindow({ max: 10, windowMs: 600000 });
 const REST_TIMER_SETS = createWindow({ max: 60, windowMs: 60000 });
 setInterval(() => { PUSH_TESTS.sweep(); REST_TIMER_SETS.sweep(); }, 600000).unref();
@@ -2576,6 +2596,7 @@ const routes = {
       // phones, older apps and scripts read that status.
       signed_in: !!readSession(req),
       // Only when on, so an instance without passwords answers exactly as it did before (#118).
+      ...(leaderboardInviteHash ? { leaderboard: true } : {}),
       ...(PASSWORD_LOGIN ? { password_login: true } : {}),
       // Scoped tokens (Settings → API tokens), and whether /mcp is served beside the app: for a
       // signed-in profile only, which is who can make one, so a stranger's answer stays as it was.
@@ -3223,6 +3244,57 @@ const routes = {
     }
     const done = commitState(user.id, cur, body.state, { overRead: body.baseRev != null && body.baseRev === curRev, stamped: body.stamped === true });
     json(res, done.status, done.body);
+  },
+
+  'GET /api/leaderboard': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!leaderboardInviteHash) return json(res, 404, { error: 'leaderboard unavailable' });
+    if (!leaderboardMember(user)) return json(res, 200, { joined: false });
+    const now = new Date(Date.now());
+    const currentMonth = leaderboardMonth(null, now);
+    const previousMonth = previousLeaderboardMonth(now);
+    const month = leaderboardMonth(new URL(req.url, 'http://x').searchParams.get('month'), now);
+    if (!month) return json(res, 400, { error: 'invalid leaderboard month' });
+    const board = leaderboard(db.users, readStateCached, month, now.toISOString().slice(0, 10));
+    json(res, 200, { joined: true, notify: user.leaderboardNotify !== false, currentMonth, previousMonth, ...board });
+  },
+
+  'POST /api/leaderboard': async (req, res) => {
+    if (!readSession(req)) return json(res, 401, { error: 'not signed in' });
+    if (!leaderboardInviteHash) return json(res, 404, { error: 'leaderboard unavailable' });
+    const body = await readBody(req);
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+
+    const before = { leaderboardJoined: user.leaderboardJoined, leaderboardNotify: user.leaderboardNotify };
+    if (body?.leave === true) {
+      delete user.leaderboardJoined;
+      delete user.leaderboardNotify;
+    } else if (leaderboardMember(user) && typeof body?.notify === 'boolean') {
+      user.leaderboardNotify = body.notify;
+    } else if (typeof body?.code === 'string' && body.code.length <= 128) {
+      const wait = leaderboardAttempts.take(user.id);
+      if (wait) return tooMany(res, wait);
+      const candidate = crypto.createHash('sha256').update(body.code.trim()).digest();
+      if (!crypto.timingSafeEqual(leaderboardInviteHash, candidate)) {
+        return json(res, 403, { error: 'invalid leaderboard invite code', code: 'leaderboard-invite' });
+      }
+      if (!leaderboardMember(user)) {
+        user.leaderboardJoined = leaderboardMonth(null, new Date(Date.now()));
+        user.leaderboardNotify = true;
+      }
+    } else {
+      return json(res, 400, { error: 'invalid leaderboard membership change' });
+    }
+
+    try { saveDb(); }
+    catch (error) {
+      Object.assign(user, before);
+      throw error;
+    }
+    const joined = leaderboardMember(user);
+    json(res, 200, { joined, notify: joined && user.leaderboardNotify !== false });
   },
 
   'GET /api/push/public-key': async (req, res) => json(res, 200, { key: vapid.publicKey }),

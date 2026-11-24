@@ -58,6 +58,19 @@ const shellHtml = '<html><head><script src="./assets/index-new.js"></script></he
 
 beforeEach(() => { delete globalThis.self })
 
+it('opens the month in a leaderboard recap on an instance under a subpath', async () => {
+  await loadSW()
+  const worker = globalThis.self
+  worker.registration.scope = 'https://gym.test/myGym/'
+  let options
+  let opened
+  worker.registration.showNotification = async (_title, value) => { options = value }
+  worker.clients.openWindow = async url => { opened = url }
+  await fire('push', { data: { json: () => ({ tag: 'leaderboard-recap', leaderboardMonth: '2026-11' }) } })
+  await fire('notificationclick', { notification: { data: options.data, close() {} } })
+  expect(opened).toBe('https://gym.test/myGym/#/leaderboard?month=2026-11')
+})
+
 describe('sw.js install and activate', () => {
   it('a precache that cannot reach the server fails the install and keeps the build on the device', async () => {
     await loadSW()

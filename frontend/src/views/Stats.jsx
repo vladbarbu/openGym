@@ -916,6 +916,10 @@ export default function Stats() {
         <button className="iconbtn" data-tour="stats-history" onClick={() => nav('/history')} aria-label={t('History')}><Icon name="history" /></button>
       </div></div>
 
+    {photoUser && photoConfig?.leaderboard && <div className="sect-b">
+      <Row title={t('Leaderboard')} icon="chart" accessory="chevron" onClick={() => nav('/leaderboard')} />
+    </div>}
+
     {/* The page in four parts (redesign 1.4.5, P5), each with its own heading, and a sticky index
         that jumps to them and follows the scroll. It is still one page: every card is where a
         scroll finds it. /stats?section=lifts (and body, effort) opens on that part. */}

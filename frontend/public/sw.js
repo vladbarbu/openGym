@@ -217,14 +217,21 @@ self.addEventListener('push', e => {
       // The status bar draws the badge as a mask: the mark in white on clear, not the square icon.
       badge: 'badge-96.png',
       tag,
+      ...(data.leaderboardMonth ? { data: { leaderboardMonth: data.leaderboardMonth } } : {}),
       renotify: true
     })
   })())
 })
 self.addEventListener('notificationclick', e => {
   e.notification.close()
-  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(clients => {
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(async clients => {
     const c = clients.find(c => 'focus' in c)
+    const month = e.notification.data?.leaderboardMonth
+    if (typeof month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      const url = new URL('./#/leaderboard?month=' + month, self.registration.scope).href
+      const page = c && await c.navigate(url).catch(() => null)
+      return page ? page.focus() : self.clients.openWindow(url)
+    }
     return c ? c.focus() : self.clients.openWindow('./')
   }))
 })

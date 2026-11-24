@@ -314,6 +314,10 @@ paths:
                       or Bearer). The cookie is HttpOnly, so this is how the app learns that
                       nobody is signed in without asking `GET /api/me` and logging its 401.
                       Since v1.4.5; absent on an older server, where the app asks as before.
+                  leaderboard:
+                    type: boolean
+                    const: true
+                    description: Present when the instance has a leaderboard invite code configured.
                   coach:
                     description: >-
                       Present for a signed-in caller and absent otherwise; `null` when this
@@ -3003,6 +3007,67 @@ paths:
         '200': { description: Done., content: { application/json: { schema: { type: object, properties: { banned: { type: boolean }, items: { type: integer } } } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: '`not-found`.', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/leaderboard:
+    get:
+      tags: [data]
+      operationId: getLeaderboard
+      summary: Get the private group’s standings
+      parameters:
+        - name: month
+          in: query
+          description: YYYY-MM or all. Defaults to the current UTC month.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Membership status. Members also receive exercise records, daily volume and consistency standings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [joined]
+                properties:
+                  joined: { type: boolean }
+                  notify: { type: boolean }
+                  currentMonth: { type: string }
+                  previousMonth: { type: string }
+                  month: { type: string }
+                  exercises:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        exercise: { type: string }
+                        basis: { type: string, enum: [logged, each, total] }
+                        rows: { type: array, items: { type: object } }
+                  heaviest: { type: array, items: { type: object } }
+                  consistency: { type: array, items: { type: object } }
+        '400': { description: Invalid month. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Leaderboard is disabled. }
+    post:
+      tags: [data]
+      operationId: changeLeaderboardMembership
+      summary: Join or leave the group, or change your monthly notification preference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { type: object, required: [code], properties: { code: { type: string, maxLength: 128 } } }
+                - { type: object, required: [notify], properties: { notify: { type: boolean } } }
+                - { type: object, required: [leave], properties: { leave: { const: true } } }
+      responses:
+        '200':
+          description: Updated membership and notification preference.
+          content:
+            application/json:
+              schema: { type: object, required: [joined, notify], properties: { joined: { type: boolean }, notify: { type: boolean } } }
+        '400': { description: Invalid membership change. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Incorrect invite code or refused origin. }
+        '404': { description: Leaderboard is disabled. }
+        '429': { description: Too many invite attempts. }
   /api/push/public-key:
     get:
       tags: [push]
