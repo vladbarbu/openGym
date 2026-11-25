@@ -46,6 +46,7 @@ import { sampleCue } from '../lib/spoken-cues.js'
 import { muscleTargetsSheet } from '../components/WeeklySets.jsx'
 import { aboutYouSheet } from '../components/StrengthLevel.jsx'
 import { api, webauthnOK, passkeyRegister, passkeyError, IS_ANDROID } from '../lib/api.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { pushSupported, enablePush, disablePush, sendTestPush, syncPushSubscription } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, tn, LANGS, INSTR_LANGS, EXERCISE_NAME_LANGS, baseLang, dateLocale } from '../lib/i18n.js'
@@ -1395,12 +1396,15 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
           {pageVisible('trainer', ctx) && <Row icon="personCircle" iconTint="var(--acc)" title={t('Trainer & gym')} subtitle={t('Who sees what of your training')} accessory="chevron" onClick={() => nav('/settings/trainer')} />}
           {pageVisible('trainer', ctx) && showsDashboard(config) && <Row icon="clipboard" iconTint="var(--orange)" title={t('Trainer dashboard')} subtitle={t('The people you train, and how they are doing')} accessory="chevron" onClick={() => nav('/trainer')} />}
+          {/* The Supabase build signs in by e-mail and password only (lib/supabase.js). */}
+          {!SUPABASE && <>
           <PasskeysRow state={passkeys.st} changed={credsChanged} />
           <OidcRow state={passkeys.st} changed={credsChanged} />
           <DeviceLinkRow state={passkeys.st} />
           <Row icon="qr" iconTint="var(--blue)" title={t('Pair the mobile app')} subtitle={t('Connect the openGym app on your phone to this account.')} accessory="chevron"
             onClick={() => useUI.getState().openSheet(close => <PairSheet close={close} />)} />
           {pwOn && <PasswordRow version={credsV} />}
+          </>}
           <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={signOutHere} />
           <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
           <AccountIdRow id={user.id} />
@@ -1424,7 +1428,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       </Section>}
       {/* Signed in or paired: the account can be deleted from here (App Store rule 5.1.1(v)). A
           phone in local-only mode has no account; "Reset everything" in Data & backup wipes it. */}
-      {user && !DEMO && <Section>
+      {user && !DEMO && !SUPABASE && <Section>
         <DeleteAccountRow exportBackup={doExport} exportBackupZip={doExportZip} hasMedia={hasMedia} done={() => nav('/home')} />
       </Section>}
       {/* The connection banner already says this to a guest; the line is for when it is switched

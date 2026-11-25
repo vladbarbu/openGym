@@ -3,6 +3,7 @@ import { t } from './i18n-core.js'
 import { MOBILE } from './mobile.js'
 import { appBase } from './app-base.js'
 import { nativeFetch, inAndroidApp } from './capacitor-fetch.js'
+import { SUPABASE, supabaseApi } from './supabase.js'
 
 export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)
 export const IS_ANDROID = /Android/.test(navigator.userAgent)
@@ -15,7 +16,8 @@ export const bio = () => (IS_APPLE ? t('Face ID / Touch ID') : IS_ANDROID ? t('f
 // navigator.credentials: some browsers expose WebAuthn while that generic Credential Management
 // API check produces a false negative (notably Chrome on iOS). The real create/get calls still run
 // only after the user chooses a passkey action and surface any genuine browser error there.
-export const webauthnOK = () => typeof window.PublicKeyCredential !== 'undefined'
+// The Supabase build has no passkeys (Supabase Auth signs in by e-mail and password).
+export const webauthnOK = () => !SUPABASE && typeof window.PublicKeyCredential !== 'undefined'
 
 // The paired mobile app (lib/remote.js) is the only caller of these — everywhere else stays on
 // same-origin cookies, so remoteBase/remoteToken stay empty and api() behaves exactly as before.
@@ -59,6 +61,8 @@ function refusal(status, body) {
 
 export async function api(path, opts) {
   const { timeout, ...init } = opts || {}
+  // A Supabase build answers from Supabase Auth and Postgres instead (lib/supabase.js).
+  if (SUPABASE) return supabaseApi(path, init)
   // A phone with no server to talk to: local mode, or a pairing that is gone. There is no
   // relative URL to fall back on here — the WebView's own origin is Capacitor's local asset
   // server, which answers ANY path, PUT included, with index.html and a 200, so a push "landed"
@@ -133,6 +137,7 @@ async function exchange(url, init) {
 // origin is Capacitor's asset server, which answers every path with index.html: the phones sent
 // every "left" to https://localhost/api/activity. The api() call beside it reaches the server.
 export function beacon(path, body) {
+  if (SUPABASE) return
   if (MOBILE) return false
   try {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return false

@@ -1,5 +1,6 @@
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { webauthnOK, passkeyLogin, passkeyRegister, passkeyError, bio } from '../lib/api.js'
 import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
@@ -48,7 +49,7 @@ function RegisterSheet({ close }) {
   if (pwOn && how === 'password') return <>
     <h3>{t('Create your profile')}</h3>
     {choose}
-    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name and a password. You sign in with both.')}</div>
+    <div className="muted small" style={{ marginBottom: 14 }}>{SUPABASE ? t('Pick a name, your e-mail and a password. You sign in with the e-mail and password.') : t('Pick a name and a password. You sign in with both.')}</div>
     <PasswordRegisterForm close={close} inviteOnly={inviteOnly} name={name} setName={setName} code={code} setCode={setCode} />
   </>
   return <>
@@ -130,6 +131,19 @@ export default function Login() {
       {webauthnOK() && (adminWay
         ? <><div style={{ height: 14 }} /><Button icon="fingerprint" onClick={signIn}>{t('Sign in with passkey')}</Button></>
         : <Button variant="ghost" className="dim" onClick={() => setAdminWay(true)} style={{ marginTop: 10 }}>{t('Admin? Use your passkey')}</Button>)}
+    </div>
+  )
+
+  // Supabase build (lib/supabase.js): e-mail and password are the only way in.
+  if (SUPABASE) return (
+    <div className="narrow" style={wrap}>
+      {head}
+      <div className="muted" style={{ marginBottom: 34 }}>{t('Your workouts. Your weights. Your profile.')}</div>
+      <Button variant="primary" icon="key" onClick={() => openPasswordSignIn()}>{t('Sign in with password')}</Button>
+      <div style={{ height: 10 }} />
+      <Button icon="plusCircle" onClick={register}>{t('Create new profile')}</Button>
+      {canGuest && <><div style={{ height: 10 }} /><Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button></>}
+      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>
   )
 

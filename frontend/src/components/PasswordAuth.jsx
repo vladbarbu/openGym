@@ -16,6 +16,7 @@ import { api, webauthnOK, passkeyAssertion, passwordLogin, passwordRegister, pas
 import { askAddDeviceData } from '../sheets.jsx'
 import { Row, Button } from './ui.jsx'
 import { MOBILE } from '../lib/mobile.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { oidcOn, oidcLabel, startWebSignIn } from '../lib/oidc.js'
 
 // The server's floor (api/password.js MIN_LENGTH), checked here first so the common mistake is
@@ -121,11 +122,11 @@ export function PasswordSignInSheet({ close, onPasskey }) {
     <h3>{reset ? t('Reset your password') : t('Sign in with password')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>{reset
       ? t('Enter the code your admin gave you and choose a new password. It signs you out everywhere else.')
-      : t('Use your profile name (or the e-mail you added to it) and your password.')}</div>
+      : SUPABASE ? t('Use your e-mail and your password.') : t('Use your profile name (or the e-mail you added to it) and your password.')}</div>
     <form onSubmit={submit} noValidate>
       {/* One field for both: the server looks an entry with an "@" up as an e-mail first. Not
           type="email", which would refuse a plain name. */}
-      <input ref={nameRef} className="input" name="username" autoComplete="username" placeholder={t('Name or e-mail')} maxLength={254}
+      <input ref={nameRef} className="input" name="username" autoComplete="username" placeholder={SUPABASE ? t('E-mail') : t('Name or e-mail')} maxLength={254}
         value={name} onChange={e => setName(e.target.value)} {...field} />
       <div style={{ height: 10 }} />
       {reset ? <>
@@ -144,9 +145,10 @@ export function PasswordSignInSheet({ close, onPasskey }) {
       <div style={{ height: 12 }} />
       <Button type="submit" variant="primary" disabled={busy}>{reset ? t('Set password & sign in') : t('Sign in')}</Button>
     </form>
-    <div style={{ height: 8 }} />
+    {/* Supabase has no admin reset codes (lib/supabase.js). */}
+    {!SUPABASE && <><div style={{ height: 8 }} />
     <Button type="button" variant="ghost" className="dim" onClick={() => { setErr(null); setMode(reset ? 'signin' : 'reset') }}>
-      {reset ? t('Sign in with password') : t('Have a reset code from your admin?')}</Button>
+      {reset ? t('Sign in with password') : t('Have a reset code from your admin?')}</Button></>}
     {onPasskey && !reset && webauthnOK() && <>
       <div style={{ height: 8 }} />
       <Button type="button" icon="fingerprint" onClick={() => { close(); onPasskey() }}>{t('Sign in with passkey')}</Button>
@@ -169,7 +171,7 @@ export function PasswordRegisterForm({ close, inviteOnly, name, setName, code, s
     const n = name.trim()
     const mail = email.trim()
     const bad = !n ? t('Enter a name')
-      : mail && !looksLikeEmail(mail) ? t('That is not an e-mail address.')
+      : (mail || SUPABASE) && !looksLikeEmail(mail) ? t('That is not an e-mail address.')
       : inviteOnly && !code.trim() ? t('An invite code is required')
       : length(pw) < MIN_PASSWORD ? t('Use at least {0} characters.', MIN_PASSWORD)
       : pw !== again ? t('The two passwords are not the same.')
@@ -189,9 +191,9 @@ export function PasswordRegisterForm({ close, inviteOnly, name, setName, code, s
     <input className="input" name="username" autoComplete="username" placeholder={t('Your name')} maxLength={40}
       value={name} onChange={e => setName(e.target.value)} {...field} />
     <div style={{ height: 10 }} />
-    <input className="input" type="email" name="email" autoComplete="email" inputMode="email" placeholder={t('E-mail (optional)')} maxLength={254}
+    <input className="input" type="email" name="email" autoComplete="email" inputMode="email" placeholder={SUPABASE ? t('E-mail') : t('E-mail (optional)')} maxLength={254}
       value={email} onChange={e => setEmail(e.target.value)} {...field} />
-    <div className="dim small" style={{ marginTop: 6 }}>{t('Lets you sign in with it instead of your name. Nothing is ever sent to it.')}</div>
+    {!SUPABASE && <div className="dim small" style={{ marginTop: 6 }}>{t('Lets you sign in with it instead of your name. Nothing is ever sent to it.')}</div>}
     {inviteOnly && <>
       <div style={{ height: 10 }} />
       <input className="input" placeholder={t('Invite code')} maxLength={40} value={code}

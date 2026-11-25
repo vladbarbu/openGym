@@ -4,6 +4,19 @@
 import pt from './pt.js'
 
 export const PT_BR_OVERRIDES = {
+  // --- Friends leaderboard ---
+  "Could not update the leaderboard. Try again.": "Não foi possível atualizar a classificação. Tente novamente.",
+  "Get last month’s standings through OpenGym web push. Enable push notifications in Settings.": "Receba a classificação do mês passado pelas notificações push do OpenGym na web. Ative as notificações nas Configurações.",
+  "Group settings": "Configurações do grupo",
+  "Joining shares your display name and leaderboard results with group members. You can leave at any time.": "Ao entrar, os membros do grupo veem seu nome de exibição e seus resultados na classificação. Você pode sair a qualquer momento.",
+  "Longest streak of weeks with at least three training days. Weeks start on Monday.": "Maior sequência de semanas com pelo menos três dias de treino. As semanas começam na segunda-feira.",
+  "Sign in to join a leaderboard.": "Faça login para entrar em uma classificação.",
+  "Tap to copy, then send it to a friend.": "Toque para copiar o código e envie para um amigo.",
+  "Total working-set volume across all workouts on your heaviest day.": "Volume total das séries de trabalho de todos os treinos no seu dia de maior volume.",
+  "You get an invite code to share with your friends.": "Você vai receber um código de convite para compartilhar com seus amigos.",
+  // --- E-mail sign-in ---
+  "Pick a name, your e-mail and a password. You sign in with the e-mail and password.": "Escolha um nome e uma senha e informe seu e-mail. Você vai entrar com o e-mail e a senha.",
+  "Use your e-mail and your password.": "Use seu e-mail e sua senha.",
   // --- Settings first screen in groups (#1105); "Watches" (Relógios) is inherited ---
   "Set once": "Configurar uma vez",
   "Connections": "Conexões",
