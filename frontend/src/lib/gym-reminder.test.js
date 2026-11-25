@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('./mobile.js', () => ({ get MOBILE() { return mocks.MOBILE } }))
 vi.mock('./api.js', () => ({ remoteAuth: () => mocks.auth }))
+vi.mock('./supabase.js', () => ({
+  get SUPABASE() { return !!mocks.supabaseSession },
+  helpers: { URL: 'https://sb.test', KEY: 'publishable', readSession: () => mocks.supabaseSession },
+}))
 vi.mock('@capacitor/core', () => ({
   Capacitor: { getPlatform: () => mocks.platform },
   registerPlugin: name => {
@@ -45,6 +49,7 @@ const on = (over = {}) => ({ on: true, gyms: [gym()], window: null, ...over })
 const flush = () => new Promise(r => setTimeout(r, 0))
 
 beforeEach(() => {
+  mocks.supabaseSession = null
   mocks.MOBILE = true; mocks.platform = 'android'; mocks.registered = 0; mocks.calls = []; mocks.listeners = {}; mocks.auth = null
   mocks.get = null; mocks.configure = { watching: 1, permission: { location: 'granted', background: 'granted' } }; mocks.status = undefined
   ln.listeners = {}
@@ -178,6 +183,14 @@ describe('kept on the device, never in the synced state', () => {
   it('with the profile: today is sent first, so the native side never acts on stale news', async () => {
     await saveGymConfig(on(), { workouts: [{ d: '2026-10-01' }] })
     expect(mocks.calls.map(c => c[0])).toEqual(['server', 'status', 'configure'])
+  })
+  it('hands Supabase RPC credentials and the full URL prefix to the gym arrival check', async () => {
+    mocks.supabaseSession = { access_token: 'sb-access' }
+    await pushGymStatus({}, true)
+    expect(mocks.calls).toContainEqual(['server', {
+      server: 'https://sb.test/rest/v1/rpc/nudge_check?date=',
+      headers: { apikey: 'publishable', Authorization: 'Bearer sb-access' },
+    }])
   })
   it('server: a paired phone hands over its server for the arrival check, once per change; no server, an empty one', async () => {
     localStorage.setItem(GYM_KEY, JSON.stringify(on()))

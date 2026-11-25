@@ -1,4 +1,4 @@
-// Mobile build only: how the Coach runs on this phone, and the little it keeps between runs.
+// How the Coach runs on this device, and the little it keeps between runs.
 //
 // Deliberately NOT part of S. S is the training log — it syncs to a paired server, travels in
 // the JSON export, and is what "back up your data" means. Which provider this phone talks to,
@@ -10,9 +10,12 @@
 //
 // This module is intentionally light. The setup screen imports it before the user has chosen
 // anything, and the promise there is that nothing AI-shaped loads until they do.
-import { readJsonFile, writeJsonFile } from './mobile.js'
+import { MOBILE, readJsonFile, writeJsonFile } from './mobile.js'
+import { SUPABASE } from './supabase.js'
 
 const FILE = 'opengym-coach.json'
+export const webCoach = () => SUPABASE && !MOBILE
+export const coachStorageKey = (key, userId) => key + ':' + JSON.stringify(userId ?? null)
 
 export const COACH_MODES = ['off', 'server', 'byok']
 
@@ -42,25 +45,41 @@ export const coachLimits = d => {
 }
 
 let cache = null
-export async function loadCoachDevice() {
-  if (cache) return cache
-  const saved = await readJsonFile(FILE)
-  cache = { ...DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
-  if (!COACH_MODES.includes(cache.mode)) cache.mode = 'off'
-  return cache
+const webCache = new Map()
+function deviceState(saved) {
+  const result = { ...DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
+  if (!COACH_MODES.includes(result.mode)) result.mode = 'off'
+  return result
 }
-export async function saveCoachDevice(patch) {
-  const cur = await loadCoachDevice()
+
+export function readWebCoachDevice(userId) {
+  const key = coachStorageKey(FILE, userId)
+  if (webCache.has(key)) return webCache.get(key)
+  try { return deviceState(JSON.parse(localStorage.getItem(key))) } catch { return deviceState(null) }
+}
+
+export async function loadCoachDevice(userId) {
+  if (webCoach()) return readWebCoachDevice(userId)
+  return cache ||= deviceState(await readJsonFile(FILE))
+}
+export async function saveCoachDevice(patch, userId) {
+  const web = webCoach()
+  const cur = web ? readWebCoachDevice(userId) : await loadCoachDevice()
   const next = { ...cur, ...patch }
   // A hand-edited file (or a caller that skipped a clamp) must not leave an out-of-range dial
   // behind: the stored object is always the clamped one, merged with whatever was there before.
   if (patch && patch.limits) next.limits = coachLimits({ limits: { ...coachLimits(cur), ...patch.limits } })
-  cache = next
-  await writeJsonFile(FILE, next)
+  if (web) {
+    const key = coachStorageKey(FILE, userId)
+    try { localStorage.setItem(key, JSON.stringify(next)); webCache.delete(key) } catch { webCache.set(key, next) }
+  } else {
+    cache = next
+    await writeJsonFile(FILE, next)
+  }
   return next
 }
 /** The part of it a UI may show: never the pending proposal, never the handle. */
 export const coachDeviceSettings = d => d ? { mode: d.mode, provider: d.provider, model: d.model, baseUrl: d.baseUrl, limits: coachLimits(d) } : null
 
 // Test seam.
-export function _resetCoachDevice() { cache = null }
+export function _resetCoachDevice() { cache = null; webCache.clear() }

@@ -5896,4 +5896,5 @@ export default {
   "Preview on": "پیش‌نمایش روی",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "کمی کوتاه‌تر",
+  "Your key is saved in this browser. Scripts on this site can read it.": "کلید شما در این مرورگر ذخیره می‌شود. اسکریپت‌های این سایت می‌توانند آن را بخوانند.",
 }

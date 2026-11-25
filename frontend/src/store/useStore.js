@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { unlink as unlinkNutrition } from '../lib/sister-nutrition.js'
 import { api, setRemoteAuth } from '../lib/api.js'
+import { SUPABASE, helpers as supabase, restoreSession } from '../lib/supabase.js'
 import { localTZ } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { registerCustom, healCustomEx } from '../lib/exercises.js'
@@ -9,7 +10,7 @@ import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { rememberDefaultLang } from '../lib/default-lang.js'
 import { guestAllowed } from '../lib/guest.js'
 import { stateJson } from '../lib/state-json.js'
-import { MOBILE, initReminderSync, nativeLoad, nativeSave, onAppActive, readJsonFile, syncReminder, writeAutoBackup, writeJsonFile } from '../lib/mobile.js'
+import { MOBILE, initReminderSync, loadSupabaseSessionFile, nativeLoad, nativeSave, onAppActive, readJsonFile, saveSupabaseSessionFile, syncReminder, writeAutoBackup, writeJsonFile } from '../lib/mobile.js'
 import { initHealthSync, syncHealth, readHealth } from '../lib/health-sync.js'
 import { refillIfComplete } from '../lib/rotation.js'
 import { liftLegacy } from '../lib/sync-legacy.js'
@@ -25,7 +26,7 @@ import { linkTokenFromSearch, stripLinkFromUrl } from '../lib/device-link.js'
 import { loadRemote, chooseLocal, forgetRemote, connect, connectWithProvider, normalizeServerUrl, renewToken } from '../lib/remote.js'
 import { takeOidcReturn } from '../lib/oidc.js'
 import { loadCfAccess } from '../lib/cf-access.js'
-import { loadCoachDevice, saveCoachDevice, coachDeviceSettings } from '../lib/coach-device.js'
+import { loadCoachDevice, saveCoachDevice, coachDeviceSettings, readWebCoachDevice, webCoach } from '../lib/coach-device.js'
 import { initCoachSchedule } from '../lib/coach-schedule.js'
 import { RTL_LANGS } from '../lib/i18n-core.js'
 import { DEFAULT_TEMPLATE_ID } from '../lib/structuralBalanceTemplates.js'
@@ -564,6 +565,7 @@ export const useStore = create((set, get) => {
   // subpath (#238) in a browser. null on a phone without one — local mode, or a pairing lost
   // under an earlier version, which kept no address.
   const serverBase = () => {
+    if (SUPABASE) return supabase.URL
     if (MOBILE) return pairedBase
     try { return location.origin && location.origin !== 'null' ? location.origin + appBase().replace(/\/$/, '') : null } catch { return null }
   }
@@ -1474,19 +1476,18 @@ export const useStore = create((set, get) => {
   // quotes, so the pull merges it with the server's copy (its first-sync path): the file can
   // still hold a copy the server has since moved past, and a merge brings back at most what was
   // deleted meanwhile, where a push with a matching baseRev dropped the other side's work.
-  const restoreFromMirror = async remote => {
+  const restoreFromMirror = async who => {
     const saved = await nativeLoad()
     if (!saved || (saved._ts || 0) <= (get().S._ts || 0)) return
     const of = await readJsonFile(MIRROR_OWNER_FILE)
-    const who = remote?.user?.id || null
     let owner = null
     try { owner = localStorage.getItem('gym_owner') } catch { /* evicted along with the copy */ }
-    if (!who || of?.owner !== who || (owner && owner !== who) || of.ts !== (saved._ts || 0)) return
-    try { if (!owner) localStorage.setItem('gym_owner', who) } catch { /* setUser writes it again */ }
+    if (of?.owner !== who || (owner && owner !== who) || of.ts !== (saved._ts || 0)) return
+    try { if (who && !owner) localStorage.setItem('gym_owner', who) } catch { /* setUser writes it again */ }
     seenOwner = readOwner()
     persist(sanitizeAccent(Object.assign(clone(DEF), saved)), false, false)
     dropSync()
-    markOwed(true)
+    if (who) markOwed(true)
   }
 
   const S0 = loadState()
@@ -1547,11 +1548,12 @@ export const useStore = create((set, get) => {
     // A one-time device-link code this page was opened with (?link=, #95), until it is redeemed.
     // Never persisted: the code is good for minutes and belongs to this one visit.
     linkCode: null,
-    // Mobile build only: how the Coach runs on this phone — { mode: 'off'|'server'|'byok',
-    // provider, model, baseUrl } from lib/coach-device.js. Never the key, never a proposal.
-    coachLocal: null,
+    // The device's Coach settings. The key and pending proposal stay out of the store.
+    coachLocal: webCoach() ? coachDeviceSettings(readWebCoachDevice(user0?.id)) : null,
     async setCoachLocal(patch) {
-      set({ coachLocal: coachDeviceSettings(await saveCoachDevice(patch)) })
+      const userId = get().user?.id
+      const saved = await saveCoachDevice(patch, userId)
+      if (!webCoach() || userId === get().user?.id) set({ coachLocal: coachDeviceSettings(saved) })
     },
 
     // Mutate a draft of S via producer fn, then persist + schedule sync. Every routine the change
@@ -1848,7 +1850,7 @@ export const useStore = create((set, get) => {
         // session and is already the right answer, Coach or no Coach.
         if (get().config && !('coach' in get().config)) get().refreshConfig()
       } else { rejoined = false; adoptHold = false; localStorage.removeItem('gym_user') }
-      set({ user: u })
+      set({ user: u, ...(webCoach() ? { coachLocal: coachDeviceSettings(readWebCoachDevice(u?.id)) } : {}) })
       // Another account, or none: what is in flight was for the previous one (GHSA-656w-p99j-x8hf).
       if ((u?.id ?? null) !== was) newSession()
       setSync({ held: adoptHold })
@@ -2163,11 +2165,20 @@ export const useStore = create((set, get) => {
 
     // Boot: ask the server who we are, then pull.
     async boot() {
+      const mobileSupabase = MOBILE && SUPABASE
+      const finish = () => {
+        if (mobileSupabase) syncReminder(get().S)
+        finishBoot()
+      }
+      if (mobileSupabase) {
+        await restoreSession(loadSupabaseSessionFile, saveSupabaseSessionFile)
+        set({ coachLocal: coachDeviceSettings(await loadCoachDevice()) })
+      }
       // Mobile build: no backend by default — restore from the file mirror (the durable copy;
       // localStorage may have been evicted since the last run) and go straight in. Unless this
       // device was paired to a server ("connect to my server" mode, lib/remote.js), in which
       // case it behaves exactly like the signed-in web flow below, straight from here.
-      if (MOBILE) {
+      if (MOBILE && !SUPABASE) {
         const remote = await loadRemote()
         // Before the first request: a server behind Cloudflare Access answers nothing without it.
         await loadCfAccess({ pairedBase: remote?.mode === 'remote' ? remote.base : '' })
@@ -2176,7 +2187,7 @@ export const useStore = create((set, get) => {
           setRemoteAuth(remote.base, remote.token)
           setPairedBase(remote.base || null)
           setSync({ server: pairedBase })
-          await restoreFromMirror(remote)
+          if (remote.user?.id) await restoreFromMirror(remote.user.id)
           try {
             const me = await api('/api/me')   // also catches a token revoked elsewhere (sign out everywhere)
             if (!me.user?.id) throw Object.assign(new Error('no user'), { status: 200, code: 'bad-response' })
@@ -2252,7 +2263,10 @@ export const useStore = create((set, get) => {
       // a bookmark or a shared screenshot of the address bar must not carry it around — and waits
       // here for the sheet that redeems it (App.jsx, components/Passkeys.jsx).
       const linkCode = linkTokenFromSearch(window.location.search)
-      if (linkCode) { stripLinkFromUrl(); set({ linkCode }) }
+      if (linkCode) {
+        stripLinkFromUrl()
+        if (!mobileSupabase) set({ linkCode })
+      }
       // Guests never authenticate, so an instance that turned guest mode off has no request to
       // refuse — the only way the switch reaches someone already inside is here, on their next
       // boot. Ending the session needs a positive `allow_guest: false`; see lib/guest.js for why
@@ -2263,11 +2277,11 @@ export const useStore = create((set, get) => {
       // browser stays signed out rather than adopt the session it left behind.
       if (logoutOwed()) {
         try { await api('/api/logout', { method: 'POST', body: '{}' }); logoutOwed(false) } catch { /* owed until it is answered */ }
-        if (logoutOwed()) { finishBoot(); return }
+        if (logoutOwed()) { finish(); return }
       }
       // Back from the identity provider (lib/oidc.js): a fresh sign-in is a sign-in like a
       // passkey's, so this copy's question is asked (adoptProfile) before anything syncs.
-      const arrived = takeOidcReturn()?.ok === 'signed-in'
+      const arrived = !mobileSupabase && takeOidcReturn()?.ok === 'signed-in'
       try {
         // Nobody is signed in and the server has just said so (`signed_in` in /api/config, made
         // with the same cookie /api/me would read): asking anyway only earns the 401 every
@@ -2276,6 +2290,7 @@ export const useStore = create((set, get) => {
         if (cfg?.signed_in === false) throw Object.assign(new Error('not signed in'), { status: 401 })
         const me = await api('/api/me')
         if (!me.user?.id) throw Object.assign(new Error('no user'), { status: 200, code: 'bad-response' })
+        if (mobileSupabase) await restoreFromMirror(me.user.id)
         get().setUser(me.user, arrived ? { adopt: true } : undefined)
         if (arrived) {
           finishBoot()
@@ -2296,8 +2311,11 @@ export const useStore = create((set, get) => {
         // Closed with the sign-in's question still open: asked again once the app is up (see the
         // phone's boot above); the adoption applies the stash, the timezone follows its copy.
         if (adoptOwed()) {
-          finishBoot()
-          get().resumeAdoption().then(() => { if (!adoptHold) restampTz() })
+          finish()
+          get().resumeAdoption().then(() => {
+            if (!adoptHold) restampTz()
+            if (mobileSupabase) syncReminder(get().S)
+          })
           return
         }
         await get().pullState()
@@ -2312,6 +2330,7 @@ export const useStore = create((set, get) => {
         if (e.status === 401) {
           const kept = !!get().user || (!get().isGuest() && !!localStorage.getItem('gym_owner') && owes())
           get().setUser(null)
+          if (mobileSupabase) await restoreFromMirror(null)
           if (kept) failed(e, { pending: owes() })
         }
         // Started without a network (a home-screen app reopened in the gym's basement), or
@@ -2319,7 +2338,7 @@ export const useStore = create((set, get) => {
         // first screen, not only after the first failed push.
         else if (get().user) failed(e, { pending: owes() })
       }
-      finishBoot()
+      finish()
     }
   }
 })

@@ -173,13 +173,30 @@ function Shell() {
   useDailyWebdav(ready && !DEMO && !offlineBuild())
   // A circuit's clock that was running before a reload carries on from where it is now.
   useEffect(() => { if (!ready) return; wireCircuit(); restoreCircuit() }, [ready])
-  // Back from "Sign in with OpenRouter" on the admin card (lib/openrouter-signin.js): the code in
-  // the address is traded for the key, which becomes the instance's OpenRouter key. Admin only,
-  // English like the rest of the admin card.
+  // OpenRouter returns to this origin for both Coach setup and the self-hosted admin card.
   useEffect(() => {
-    if (!user?.admin || MOBILE) return
-    import('./lib/openrouter-signin.js').then(async m => {
-      if (!m.isWebReturn()) return
+    if (MOBILE || !ready || !/[?&](code|error)=/.test(window.location.search)) return
+    Promise.all([import('./lib/openrouter-signin.js'), import('./lib/supabase.js')]).then(async ([m, { SUPABASE }]) => {
+      if ((!SUPABASE && !user?.admin) || !m.isWebReturn()) return
+      if (SUPABASE) {
+        const userId = user?.id ?? null
+        const r = await m.finishWebSignIn({
+          userId,
+          save: async key => {
+            const [{ setApiKey }, { HTTP_PROVIDERS }] = await Promise.all([
+              import('./lib/coach-secrets.js'), import('../../api/coach/core/providers.js')
+            ])
+            const profile = useStore.getState()
+            if ((profile.user?.id ?? null) !== userId) throw new Error(t('Could not connect'))
+            await setApiKey(key, userId)
+            if ((useStore.getState().user?.id ?? null) !== userId) throw new Error(t('Could not connect'))
+            await profile.setCoachLocal({ mode: 'byok', provider: 'openrouter', model: HTTP_PROVIDERS.openrouter.defaultModel, baseUrl: null })
+          }
+        }).catch(e => ({ ok: false, error: e.message }))
+        useUI.getState().toast(r.ok ? t('Signed in with OpenRouter') : t('The OpenRouter sign-in did not work: {0}', r.error))
+        navigate('/coach/setup', { replace: true })
+        return
+      }
       const { api } = await import('./lib/api.js')
       const r = await m.finishWebSignIn({
         save: async key => {
@@ -190,7 +207,7 @@ function Shell() {
       useUI.getState().toast(r.ok ? 'Signed in with OpenRouter. The Coach uses it now.' : 'OpenRouter sign-in failed: ' + r.error)
       navigate('/admin', { replace: true })
     }).catch(() => {})
-  }, [user?.admin])
+  }, [ready, user?.admin, user?.id])
   const isGuest = useStore(s => s.isGuest())
   const needsMobileOnboarding = useStore(s => s.needsMobileOnboarding)
   const permSteps = useStore(s => s.permSteps)

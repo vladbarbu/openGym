@@ -5940,4 +5940,5 @@ export default {
   "Preview on": "Anteprima su",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "un po’ più corto",
+  "Your key is saved in this browser. Scripts on this site can read it.": "La tua chiave è salvata in questo browser. Gli script di questo sito possono leggerla.",
 }

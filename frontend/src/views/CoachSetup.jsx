@@ -1,4 +1,4 @@
-// Mobile build only: how the Coach should run on this phone.
+// How the Coach should run on this device.
 //
 // Two answers. "Use my self-hosted openGym" hands the whole thing to the paired server — the
 // same Coach the web app has, with whatever provider its admin configured; the phone only has
@@ -15,6 +15,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t, tn } from '../lib/i18n.js'
 import { MOBILE } from '../lib/mobile.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { CATEGORY_TEXT } from '../lib/coach.js'
 import { getApiKey, setApiKey, clearApiKey } from '../lib/coach-secrets.js'
 import { coachLimits, clampCoachLimit, COACH_LIMITS } from '../lib/coach-device.js'
@@ -34,9 +35,7 @@ const STEPS = () => [t('Loading the exercise catalogue…'), t('Checking the end
 // counts as the home network. Android lets the app speak cleartext to any host
 // (network_security_config.xml, #428: it cannot scope that to address ranges) and iOS to local
 // addresses (Info.plist NSAllowsLocalNetworking), so this check is what keeps a key and training
-// data from ever going over the internet unencrypted. It runs again before every call
-// (coach-local.js). The web app has no such screen: in a browser the Coach always runs on the
-// server, which reaches http:// on its own network (an https page could not call http:// itself).
+// data from going over the internet unencrypted. It runs again before every call (coach-local.js).
 // The big cards: the ways most people get going. `local` is the compatible endpoint, found on the
 // network; MiniMax and a hand-typed compatible endpoint stay one tap further, as chips.
 const CARDS = [
@@ -46,6 +45,8 @@ const CARDS = [
   { id: 'gemini', provider: 'gemini', icon: 'key', tint: 'var(--blue)', line: () => t('Gemini, with a free tier to start') },
   { id: 'local', provider: 'compatible', icon: 'house', tint: 'var(--teal)', title: () => t('On my network'), line: () => t('Ollama or LM Studio at home, nothing leaves your Wi-Fi') }
 ]
+// These providers accept the adapter headers in a cross-origin browser request.
+const WEB_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'gemini', 'minimax']
 const TIER = { free: () => t('free'), low: () => '$', mid: () => '$$', high: () => '$$$' }
 const tierOf = (m, prices) => { const k = priceTier(m, prices && prices[m]); return k ? TIER[k]() : '' }
 
@@ -53,6 +54,11 @@ const isCleartext = url => /^http:\/\//i.test(String(url || '').trim())
 const cleartextRefused = () => t('Plain http:// only works for an address on your home network, like 192.168.x.x, a .local name or a Tailscale 100.x address. Anything on the internet needs https://.')
 
 export default function CoachSetup() {
+  const userId = useStore(s => s.user?.id)
+  return <CoachSetupPage key={SUPABASE && !MOBILE ? userId : undefined} />
+}
+
+function CoachSetupPage() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
@@ -62,8 +68,11 @@ export default function CoachSetup() {
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
 
-  const [choice, setChoice] = useState(null)              // 'server' | 'byok' | null
-  const [provider, setProvider] = useState(coachLocal?.provider || 'anthropic')
+  const web = SUPABASE && !MOBILE
+  const providers = web ? WEB_PROVIDERS : HTTP_PROVIDER_IDS
+  const initialProvider = providers.includes(coachLocal?.provider) ? coachLocal.provider : web ? 'openrouter' : 'anthropic'
+  const [choice, setChoice] = useState(web && coachLocal?.mode === 'byok' ? 'byok' : null)
+  const [provider, setProvider] = useState(initialProvider)
   const [baseUrl, setBaseUrl] = useState(coachLocal?.baseUrl || '')
   const [model, setModel] = useState(coachLocal?.model || '')
   const [key, setKey] = useState('')
@@ -71,7 +80,7 @@ export default function CoachSetup() {
   const [models, setModels] = useState(null)
   const [prices, setPrices] = useState(null)
   const cardFor = id => (id === 'compatible' ? 'local' : CARDS.some(c => c.id === id) ? id : null)
-  const [card, setCard] = useState(cardFor(coachLocal?.provider || 'anthropic'))
+  const [card, setCard] = useState(cardFor(initialProvider))
   const [found, setFound] = useState(null)               // local discovery: null idle, [] none, [...]
   const [orSession, setOrSession] = useState(null)       // a running OpenRouter sign-in, for the paste fallback
   const [orCode, setOrCode] = useState('')
@@ -82,10 +91,15 @@ export default function CoachSetup() {
   // freely and is only clamped and saved when the field is left.
   const [limits, setLimits] = useState(() => coachLimits(coachLocal))
 
-  useEffect(() => { if (!MOBILE) nav('/settings', { replace: true }) }, [])
-  useEffect(() => { getApiKey().then(k => setHasKey(!!k)) }, [])
+  useEffect(() => { if (!MOBILE && !SUPABASE) nav('/settings', { replace: true }) }, [])
+  useEffect(() => {
+    let active = true
+    setHasKey(false)
+    getApiKey(user?.id).then(k => { if (active) setHasKey(!!k) })
+    return () => { active = false }
+  }, [user?.id])
   // Ask the paired server afresh: the admin may have switched the Coach on since this phone booted.
-  useEffect(() => { if (user) refreshConfig() }, [user])
+  useEffect(() => { if (user && !SUPABASE) refreshConfig() }, [user])
   useEffect(() => { setModels(null); setPrices(null); setModel(coachLocal?.provider === provider ? (coachLocal?.model || '') : '') }, [provider])
   useEffect(() => { setLimits(coachLimits(coachLocal)) }, [coachLocal])
 
@@ -97,6 +111,7 @@ export default function CoachSetup() {
   }
 
   const meta = HTTP_PROVIDERS[provider] || {}
+  const savedKeyForProvider = hasKey && (!web || coachLocal?.provider === provider)
   const host = hostOf(baseUrlFor(provider, { providerOptions: { [provider]: { baseUrl } } }))
   const serverHasCoach = !!(user && config?.coach?.enabled)
 
@@ -117,12 +132,12 @@ export default function CoachSetup() {
     // empty means the default. This one has no default, so empty is nowhere to call.
     if (meta.baseUrl && !meta.defaultBase && !v.value) return toast(t('Enter the endpoint URL'))
     if (v.value && !phoneMayCall(v.value)) return toast(cleartextRefused())
-    if (!meta.keyOptional && !fresh.trim() && !hasKey) return toast(t('Enter your API key'))
+    if (!meta.keyOptional && !fresh.trim() && !savedKeyForProvider) return toast(t('Enter your API key'))
     setBusy(true); setStep(0)
     try {
       const local = await import('../lib/coach-local.js')
       setStep(1)
-      const k = fresh.trim() || await getApiKey()
+      const k = fresh.trim() || await getApiKey(user?.id)
       const r = await local.localModels({ provider, baseUrl: v.value }, k)
       if (!r.ok) { setStep(-1); toast(t('Could not reach the provider: {0}', r.error)); return }
       setModels(r.models)
@@ -142,17 +157,23 @@ export default function CoachSetup() {
     const v = validateBaseUrl(meta.baseUrl ? baseUrl : '')
     if (!v.ok) return toast(v.error)
     if (meta.baseUrl && !meta.defaultBase && !v.value) return toast(t('Enter the endpoint URL'))
+    if (web && !key.trim() && !savedKeyForProvider) return toast(t('Enter your API key'))
     const chosen = model || meta.defaultModel
     if (!chosen) return toast(t('Pick a model'))
     // The endpoint can still be edited after the models were listed.
     if (v.value && !phoneMayCall(v.value)) return toast(cleartextRefused())
     setBusy(true)
     try {
-      // The mode first, the key second: the settings file is the cheap, reliable write, the
-      // key goes through the platform's secure store, which is the step that can misbehave.
-      // Either way the user hears what happened instead of watching a greyed-out button (#42).
-      await setCoachLocal({ mode: 'byok', provider, model: chosen, baseUrl: meta.baseUrl ? v.value : null })
-      if (key.trim()) { await setApiKey(key.trim()); setHasKey(true); setKey('') }
+      // On phones keep the settings-first flow for the native secure store (#42).
+      const settings = { mode: 'byok', provider, model: chosen, baseUrl: meta.baseUrl ? v.value : null }
+      if (!web) await setCoachLocal(settings)
+      if (key.trim()) {
+        if (web) await setApiKey(key.trim(), user?.id)
+        else await setApiKey(key.trim())
+        setHasKey(true); setKey('')
+      }
+      if (web && useStore.getState().user?.id !== user?.id) return
+      if (web) await setCoachLocal(settings)
       toast(t('The Coach is on'))
       nav('/coach')
     } catch (e) {
@@ -165,7 +186,7 @@ export default function CoachSetup() {
     const before = key
     setKey(v)
     const other = providerOfKey(v)
-    if (other && other !== provider && HTTP_PROVIDERS[other]) {
+    if (other && other !== provider && providers.includes(other)) {
       setProvider(other)
       setCard(cardFor(other))
       toast(t('That looks like a {0} key, so I switched to {0}.', HTTP_PROVIDERS[other].label))
@@ -181,20 +202,28 @@ export default function CoachSetup() {
     if (!v.trim()) return toast(t('Nothing to paste. Copy the key first, then try again.'))
     onKey(v.trim())
   }
-  const pick = c => { setCard(c.id); setProvider(c.provider); setFound(null); setOrSession(null) }
+  const pick = (id, next) => {
+    if (web && provider !== next) setKey('')
+    setCard(id); setProvider(next); setFound(null); setOrSession(null)
+  }
 
   // A key from OpenRouter's own sign-in goes where a pasted one would, then the models are listed.
   const gotOpenRouterKey = async k => {
-    await setApiKey(k); setHasKey(true); setKey(''); setOrSession(null); setOrCode('')
+    if (web) setKey(k)
+    else { await setApiKey(k); setHasKey(true); setKey('') }
+    setOrSession(null); setOrCode('')
     toast(t('Signed in with OpenRouter'))
-    await prepare()
+    await prepare(k)
   }
   const signInOpenRouter = async () => {
     setBusy(true)
-    const m = await import('../lib/openrouter-signin.js')
-    const sess = await m.phoneSession()
-    setOrSession(sess)
-    try { await gotOpenRouterKey(await m.phoneSignIn({ session: sess })) }
+    try {
+      const m = await import('../lib/openrouter-signin.js')
+      if (web) return await m.startWebSignIn({ back: '#/coach/setup', userId: user?.id ?? null })
+      const sess = await m.phoneSession()
+      setOrSession(sess)
+      await gotOpenRouterKey(await m.phoneSignIn({ session: sess }))
+    }
     catch (e) { if (e?.code !== 'cancelled') toast(t('The OpenRouter sign-in did not work: {0}', e.message)) }
     finally { setBusy(false) }
   }
@@ -227,16 +256,16 @@ export default function CoachSetup() {
   const useFound = f => { setBaseUrl(f.base); setModels(f.models); setPrices(null); setStep(2); if (f.models[0]) setModel(f.models[0]) }
 
   const turnOff = async () => {
-    await clearApiKey(); setHasKey(false)
+    await clearApiKey(user?.id); setHasKey(false)
     await setCoachLocal({ mode: 'off' })
     const local = await import('../lib/coach-local.js').catch(() => null)
-    if (local) await local.localForget()
+    if (local) await local.localForget(web ? user?.id : null)
     setChoice(null)
     toast(t('The Coach is off'))
   }
 
   const current = coachLocal?.mode === 'server' ? t('Runs on your openGym server')
-    : coachLocal?.mode === 'byok' ? t('Runs on this phone with your own API key')
+    : coachLocal?.mode === 'byok' ? (web ? t('Your API key') : t('Runs on this phone with your own API key'))
     : t('Off. Choose how the Coach should run.')
 
   return <div className="narrow">
@@ -251,11 +280,11 @@ export default function CoachSetup() {
     </Section>
 
     <Section title={t('How should the Coach run?')} footer={current}>
-      <Row icon="rocket" iconTint="var(--indigo)" title={t('Use my self-hosted openGym')}
+      {!SUPABASE && <Row icon="rocket" iconTint="var(--indigo)" title={t('Use my self-hosted openGym')}
         subtitle={user ? (serverHasCoach ? t('Your server runs the Coach with whatever provider its admin set up. Nothing new leaves this phone beyond what already syncs.') : config == null ? t('Loading…') : t('Your server has no Coach enabled. Ask its admin, or bring your own key below.')) : t('Connect to my server')}
-        accessory="chevron" onClick={() => { if (!user || serverHasCoach) useServer(); else setChoice('server') }} />
+        accessory="chevron" onClick={() => { if (!user || serverHasCoach) useServer(); else setChoice('server') }} />}
       <Row icon="key" iconTint="var(--acc)" title={t('Bring my own API key')}
-        subtitle={t('This phone calls the provider directly with your key. Every request is charged to your account.')}
+        subtitle={web ? undefined : t('This phone calls the provider directly with your key. Every request is charged to your account.')}
         accessory="chevron" onClick={() => setChoice('byok')} />
     </Section>
 
@@ -266,15 +295,15 @@ export default function CoachSetup() {
     {choice === 'byok' && <>
       <Section title={t('Pick your AI')}>
         <div className="cs-cards">
-          {CARDS.map(c => <button key={c.id} type="button" className={'cs-card' + (card === c.id ? ' on' : '')} disabled={busy} aria-pressed={card === c.id} onClick={() => pick(c)}>
+          {CARDS.filter(c => providers.includes(c.provider)).map(c => <button key={c.id} type="button" className={'cs-card' + (card === c.id ? ' on' : '')} disabled={busy} aria-pressed={card === c.id} onClick={() => pick(c.id, c.provider)}>
             <span className="cs-card-i" style={{ color: c.tint }}><Icon name={c.icon} /></span>
             <span className="cs-card-t">{c.title ? c.title() : HTTP_PROVIDERS[c.provider].label}</span>
             <span className="cs-card-s">{c.line()}</span>
           </button>)}
         </div>
         <div className="row" style={{ flexWrap: 'wrap', gap: 7, padding: '4px 12px 10px' }}>
-          {HTTP_PROVIDER_IDS.filter(id => !CARDS.some(c => c.provider === id && c.id !== 'local')).map(id => <button key={id} className={'chip' + (id === provider && !card ? ' on' : '')} disabled={busy}
-            onClick={() => { setCard(null); setProvider(id); setFound(null) }}>{HTTP_PROVIDERS[id].label}</button>)}
+          {providers.filter(id => !CARDS.some(c => c.provider === id && c.id !== 'local')).map(id => <button key={id} className={'chip' + (id === provider && !card ? ' on' : '')} disabled={busy}
+            onClick={() => pick(null, id)}>{HTTP_PROVIDERS[id].label}</button>)}
         </div>
       </Section>
 
@@ -292,7 +321,7 @@ export default function CoachSetup() {
         </div>
       </Section>}
 
-      {meta.signIn === 'pkce' && <Section title={t('Sign in')} footer={t('OpenRouter makes a key just for this phone, billed to your OpenRouter credits. You can revoke it there any time.')}>
+      {meta.signIn === 'pkce' && <Section title={t('Sign in')} footer={web ? undefined : t('OpenRouter makes a key just for this phone, billed to your OpenRouter credits. You can revoke it there any time.')}>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', padding: '8px 12px' }}>
           <Button variant="primary" icon="person" disabled={busy} onClick={signInOpenRouter}>{t('Sign in with OpenRouter')}</Button>
           <Button variant="tinted" disabled={busy} onClick={pasteInstead}>{t('Paste a code instead')}</Button>
@@ -303,9 +332,11 @@ export default function CoachSetup() {
         </div>}
       </Section>}
 
-      <Section title={meta.signIn === 'pkce' ? t('Or paste a key') : t('API key')} footer={t('The key is stored in this phone’s secure storage and never leaves it except to call the provider.')}>
+      <Section title={meta.signIn === 'pkce' ? t('Or paste a key') : t('API key')} footer={web
+        ? t('Your key is saved in this browser. Scripts on this site can read it.')
+        : t('The key is stored in this phone’s secure storage and never leaves it except to call the provider.')}>
         <div style={{ padding: '8px 12px' }}>
-          <TextField value={key} type="password" placeholder={hasKey ? '••••••••  ' + t('(saved)') : (meta.keyPlaceholder || 'sk-…')} autoCapitalize="none" autoCorrect="off"
+          <TextField value={key} type="password" placeholder={savedKeyForProvider ? '••••••••  ' + t('(saved)') : (meta.keyPlaceholder || 'sk-…')} autoCapitalize="none" autoCorrect="off"
             onChange={e => onKey(e.target.value)} />
         </div>
         {provider === 'gemini' && <ol className="cs-steps">
@@ -319,7 +350,7 @@ export default function CoachSetup() {
         <Row icon="clipboard" iconTint="var(--grey)" title={t('Paste the key')} accessory="none" onClick={busy ? undefined : pasteKey} />
       </Section>
 
-      <Section title={t('What leaves this phone')}>
+      <Section title={web ? t('What the Coach sees') : t('What leaves this phone')}>
         {DATA_CATEGORIES.map(k => {
           const [title, sub] = CATEGORY_TEXT[k]?.() || [k, '']
           return <Row key={k} icon="check" iconTint="var(--acc)" title={title} subtitle={sub} />
@@ -372,7 +403,7 @@ export default function CoachSetup() {
     {coachLocal?.mode && coachLocal.mode !== 'off' && <AiConsentSection />}
 
     {coachLocal?.mode && coachLocal.mode !== 'off' && <Section title={t('Controls')}>
-      <Row icon="signOut" iconTint="var(--red)" title={t('Turn the Coach off on this phone')} danger onClick={turnOff} />
+      <Row icon="signOut" iconTint="var(--red)" title={web ? t('Turn off') : t('Turn the Coach off on this phone')} danger onClick={turnOff} />
     </Section>}
   </div>
 }

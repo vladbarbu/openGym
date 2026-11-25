@@ -130,8 +130,8 @@ export function PasswordSignInSheet({ close, onPasskey }) {
         value={name} onChange={e => setName(e.target.value)} {...field} />
       <div style={{ height: 10 }} />
       {reset ? <>
-        <input className="input" name="reset-code" autoComplete="one-time-code" placeholder={t('Reset code')} maxLength={20}
-          value={code} onChange={e => setCode(e.target.value.toUpperCase())} {...field} style={codeStyle} />
+        <input className="input" name="reset-code" autoComplete="one-time-code" placeholder={t('Reset code')} maxLength={SUPABASE ? 64 : 20}
+          value={code} onChange={e => setCode(SUPABASE ? e.target.value : e.target.value.toUpperCase())} {...field} style={codeStyle} />
         <div style={{ height: 10 }} />
         <input className="input" type="password" name="new-password" autoComplete="new-password" placeholder={t('New password')}
           value={next} onChange={e => setNext(e.target.value)} />
@@ -145,10 +145,9 @@ export function PasswordSignInSheet({ close, onPasskey }) {
       <div style={{ height: 12 }} />
       <Button type="submit" variant="primary" disabled={busy}>{reset ? t('Set password & sign in') : t('Sign in')}</Button>
     </form>
-    {/* Supabase has no admin reset codes (lib/supabase.js). */}
-    {!SUPABASE && <><div style={{ height: 8 }} />
+    <div style={{ height: 8 }} />
     <Button type="button" variant="ghost" className="dim" onClick={() => { setErr(null); setMode(reset ? 'signin' : 'reset') }}>
-      {reset ? t('Sign in with password') : t('Have a reset code from your admin?')}</Button></>}
+      {reset ? t('Sign in with password') : t('Have a reset code from your admin?')}</Button>
     {onPasskey && !reset && webauthnOK() && <>
       <div style={{ height: 8 }} />
       <Button type="button" icon="fingerprint" onClick={() => { close(); onPasskey() }}>{t('Sign in with passkey')}</Button>

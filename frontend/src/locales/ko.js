@@ -5930,4 +5930,5 @@ export default {
   "Preview on": "미리 볼 화면",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "조금 짧게",
+  "Your key is saved in this browser. Scripts on this site can read it.": "키는 이 브라우저에 저장됩니다. 이 사이트의 스크립트가 키를 읽을 수 있습니다.",
 }

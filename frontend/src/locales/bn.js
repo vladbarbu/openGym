@@ -6009,4 +6009,5 @@ export default {
   "Preview on": "প্রিভিউ দেখুন",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "একটু কম সময়",
+  "Your key is saved in this browser. Scripts on this site can read it.": "আপনার কী এই ব্রাউজারে সেভ থাকে। এই সাইটের স্ক্রিপ্টগুলো সেটি পড়তে পারে।",
 }

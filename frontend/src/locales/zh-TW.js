@@ -5923,4 +5923,5 @@ export default {
   "Preview on": "預覽位置",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "縮短一點",
+  "Your key is saved in this browser. Scripts on this site can read it.": "你的金鑰會儲存在這個瀏覽器。這個網站的指令碼可以讀取它。",
 }

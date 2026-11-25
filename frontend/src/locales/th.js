@@ -5941,4 +5941,5 @@ export default {
   "Preview on": "ดูตัวอย่างบน",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "สั้นลงหน่อย",
+  "Your key is saved in this browser. Scripts on this site can read it.": "คีย์ของคุณจะถูกบันทึกในเบราว์เซอร์นี้ สคริปต์บนเว็บไซต์นี้สามารถอ่านคีย์ได้",
 }

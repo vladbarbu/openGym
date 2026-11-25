@@ -24,7 +24,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => {
   const state = {
-    mobile: true, user: null, config: null, coachLocal: null,
+    mobile: true, supabase: false, user: null, config: null, coachLocal: null,
     nav: vi.fn(), toast: vi.fn(), openSheet: vi.fn(), setCoachLocal: vi.fn(), refreshConfig: vi.fn(),
   }
   state.snapshot = () => ({
@@ -48,6 +48,7 @@ vi.mock('../store/useUI.js', () => {
 vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.nav }))
 // A getter, so one test can be the web build and the rest the phone.
 vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.mobile } }))
+vi.mock('../lib/supabase.js', () => ({ get SUPABASE() { return mocks.supabase } }))
 vi.mock('../lib/coach-secrets.js', () => ({
   getApiKey: vi.fn(() => Promise.resolve(null)),
   setApiKey: vi.fn(() => Promise.resolve()),
@@ -62,6 +63,7 @@ vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => <div className="c
 let host, root
 beforeEach(() => {
   mocks.mobile = true
+  mocks.supabase = false
   mocks.user = { uid: 'u1', name: 'Ana' }
   mocks.config = { coach: { enabled: true } }
   mocks.coachLocal = null
@@ -87,6 +89,18 @@ const btn = text => all('.btn').find(b => b.textContent.trim() === text)
 const chip = label => all('.cs-card').find(b => b.querySelector('.cs-card-t')?.textContent === label) || all('.chip').find(b => b.textContent.trim() === label)
 const field = type => all('input').find(i => (i.getAttribute('type') || 'text') === type)
 const click = el => { expect(el).toBeTruthy(); return act(() => el.click()) }
+
+it('offers the cloud providers with browser CORS in the Supabase web setup', async () => {
+  mocks.mobile = false
+  mocks.supabase = true
+  await mount()
+  expect(mocks.nav).not.toHaveBeenCalled()
+  expect(rowTitled('Use my self-hosted openGym')).toBeUndefined()
+  await click(rowTitled('Bring my own API key'))
+  for (const name of ['OpenRouter', 'Anthropic API', 'OpenAI API', 'Google Gemini', 'MiniMax API']) expect(chip(name), name).toBeTruthy()
+  expect(chip('On my network')).toBeUndefined()
+  expect(chip('OpenAI-compatible endpoint')).toBeUndefined()
+})
 const typeIn = (el, value) => act(() => {
   Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set.call(el, value)
   el.dispatchEvent(new Event('input', { bubbles: true }))

@@ -252,7 +252,8 @@ final class GymReminderCenter: NSObject, CLLocationManagerDelegate {
     func trainedElsewhere(today: String, _ done: @escaping (Bool) -> Void) {
         guard let auth = GymReminderCenter.loadServer(), var base = auth["server"] as? String, !base.isEmpty else { done(false); return }
         while base.hasSuffix("/") { base.removeLast() }
-        guard var parts = URLComponents(string: base + "/api/nudge-check") else { done(false); return }
+        let endpoint = base.hasSuffix("?date=") ? base : base + "/api/nudge-check"
+        guard var parts = URLComponents(string: endpoint) else { done(false); return }
         parts.queryItems = [URLQueryItem(name: "date", value: today)]
         guard let url = parts.url else { done(false); return }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)

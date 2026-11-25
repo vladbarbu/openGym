@@ -29,10 +29,10 @@ describe('Android backup rules', () => {
     // An <include> would turn either list into an allowlist and drop everything else.
     expect(legacy).not.toMatch(/<include/)
     expect(modern).not.toMatch(/<include/)
-    // Device transfer takes everything but the pairing and the gym reminder's places.
+    // Device transfer takes everything but the pairing, the Supabase session and the gym reminder's places.
     const transfer = modern.match(/<device-transfer>([\s\S]*?)<\/device-transfer>/)?.[1] || ''
     expect(transfer).not.toMatch(EXCLUDE)
-    expect(transfer.match(/<exclude/g)).toHaveLength(2)
+    expect(transfer.match(/<exclude/g)).toHaveLength(3)
   })
 
   it('the gym reminder\'s places (#614) never leave the phone: out of every backup and transfer', () => {
@@ -45,10 +45,13 @@ describe('Android backup rules', () => {
     expect(java).toMatch(/PREFS = "opengym_gym_reminder"/)
   })
 
-  it('the pairing token is left out of every backup and transfer', () => {
-    expect(legacy).toMatch(TOKEN)
-    expect(modern.match(/<cloud-backup>([\s\S]*?)<\/cloud-backup>/)?.[1]).toMatch(TOKEN)
-    expect(modern.match(/<device-transfer>([\s\S]*?)<\/device-transfer>/)?.[1]).toMatch(TOKEN)
+  it('the pairing token and the Supabase session are left out of every backup and transfer', () => {
+    const SESSION = /<exclude\s+domain="file"\s+path="opengym-supabase-session\.json"\s*\/>/
+    for (const re of [TOKEN, SESSION]) {
+      expect(legacy).toMatch(re)
+      expect(modern.match(/<cloud-backup>([\s\S]*?)<\/cloud-backup>/)?.[1]).toMatch(re)
+      expect(modern.match(/<device-transfer>([\s\S]*?)<\/device-transfer>/)?.[1]).toMatch(re)
+    }
   })
 
   it('no comment carries a double dash, which breaks the Android build (v1.3.6)', () => {

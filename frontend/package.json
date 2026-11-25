@@ -9,6 +9,7 @@
     "build": "vite build",
     "build:supabase": "vite build --mode supabase",
     "build:mobile": "VITE_MOBILE=1 vite build && node scripts/check-season-clock.mjs dist && node ../scripts/catalogue/stage-media.mjs dist && cap sync && node scripts/check-mobile-bundle.mjs",
+    "build:mobile:supabase": "VITE_MOBILE=1 vite build --mode supabase && node scripts/check-season-clock.mjs dist && node ../scripts/catalogue/stage-media.mjs dist && cap sync && node scripts/check-mobile-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run && npm run check:native-localizations",
     "test:watch": "vitest",

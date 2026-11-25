@@ -9,6 +9,7 @@ import { useUI } from '../store/useUI.js'
 import { t, tn } from '../lib/i18n.js'
 import { dateLocale } from '../lib/i18n-core.js'
 import { api, webauthnOK, createPasskey } from '../lib/api.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { copyText } from '../lib/clipboard.js'
 import { deviceLinkUrl, deviceLabel } from '../lib/device-link.js'
 import { askAddDeviceData } from '../sheets.jsx'
@@ -49,6 +50,7 @@ export function passkeyError(e) {
     case 'last-way-in': return t('It is your only way in, so it cannot be removed until there is another.')
     case 'passkey-limit': return t('This profile already has as many passkeys as it can hold.')
     case 'credential-exists': return t('This passkey already belongs to a profile.')
+    case 'challenge-expired': return t('That took a little too long. Give it another go.')
     case 'link-invalid': return t('That code is wrong, already used or expired. Make a new one on your other device.')
   }
   return passwordError(e)
@@ -87,8 +89,13 @@ export function DeviceLinkRow({ state }) {
 }
 
 export function PasskeysSheet({ close, changed }) {
-  const { st, set } = usePasskeys(true)
-  const done = r => { set(listOf(r) || st); changed?.() }
+  const { st, set, load } = usePasskeys(true)
+  const done = r => {
+    const next = listOf(r)
+    if (next) set(next)
+    else load()
+    changed?.()
+  }
   if (!st) return <><h3>{t('Passkeys')}</h3><div className="muted small">…</div></>
   const edit = (p, i) => ui().openSheet(c => <PasskeySheet passkey={p} title={label(p, i)} state={st} close={c} done={done} />)
   const add = () => ui().openSheet(c => <AddPasskeySheet state={st} close={c} done={done} />)
@@ -131,7 +138,7 @@ function PasskeySheet({ passkey, title, state, close, done }) {
       <input className="input" placeholder={t('Name, e.g. Work laptop')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
       {err && <div className="small" role="alert" style={errStyle}>{err}</div>}
       <div style={{ height: 12 }} />
-      <Button type="submit" variant="primary" disabled={busy}>{t('Save')}</Button>
+      <Button type="submit" variant="primary" disabled={busy || (SUPABASE && !name.trim())}>{t('Save')}</Button>
     </form>
     <div style={{ height: 8 }} />
     {state.lastWayIn
@@ -146,10 +153,19 @@ function PasskeySheet({ passkey, title, state, close, done }) {
    it, this one included. Removing does not end a session the passkey opened — sessions are not
    tied to one (api/server.js) — which the sheet says, with the way to do that. */
 function RemovePasskeySheet({ passkey, title, state, close, done }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
   const remove = async proof => {
     const r = await api('/api/account/passkeys?id=' + encodeURIComponent(passkey.id), { method: 'DELETE', body: JSON.stringify(proof) })
     close(); done(r)
     toast(t('Passkey removed'))
+  }
+  const removeWithSession = async () => {
+    if (busy) return
+    setBusy(true); setErr(null)
+    try { await remove({}) }
+    catch (e) { setErr(passkeyError(e)) }
+    finally { setBusy(false) }
   }
   return <>
     <h3>{t('Remove this passkey?')}</h3>
@@ -157,8 +173,13 @@ function RemovePasskeySheet({ passkey, title, state, close, done }) {
     <div className="muted small" style={{ marginBottom: 6 }}>
       {t('It can no longer sign in to this profile. A device already signed in with it stays signed in. If it was lost, use Sign out everywhere.')}
     </div>
-    <div className="dim small" style={{ marginBottom: 14 }}>{t('First confirm that it is you.')}</div>
-    <ProveOwner passkey password={state.password} explain={passkeyError} danger submitText={t('Remove')} onProof={remove} />
+    {SUPABASE ? <>
+      <Button type="button" variant="danger" disabled={busy} onClick={removeWithSession}>{t('Remove')}</Button>
+      {err && <div className="small" role="alert" style={errStyle}>{err}</div>}
+    </> : <>
+      <div className="dim small" style={{ marginBottom: 14 }}>{t('First confirm that it is you.')}</div>
+      <ProveOwner passkey password={state.password} explain={passkeyError} danger submitText={t('Remove')} onProof={remove} />
+    </>}
     <div style={{ height: 8 }} />
     <Button type="button" variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
   </>
@@ -172,17 +193,26 @@ function RemovePasskeySheet({ passkey, title, state, close, done }) {
 function AddPasskeySheet({ state, close, done }) {
   // Blank to start with: what gets added here is rarely this browser (a key, a phone, a manager).
   const [name, setName] = useState('')
-  const [ready, setReady] = useState(null)   // { cid, options } once the proof went through
+  const [ready, setReady] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const prepare = async proof => setReady(await post('/api/account/passkeys/options', proof))
+  const prepareWithSession = async () => {
+    if (busy) return
+    setBusy(true); setErr(null)
+    try { await prepare({}) }
+    catch (e) { setErr(passkeyError(e)) }
+    finally { setBusy(false) }
+  }
   const create = async () => {
     if (busy) return
     setBusy(true); setErr(null)
     try {
       const credential = await createPasskey(ready.options)
-      done(await post('/api/account/passkeys/verify', { cid: ready.cid, credential, name }))
+      const result = await post('/api/account/passkeys/verify', { cid: ready.cid, credential, name })
+      done(result)
       close()
-      toast(t('Passkey added'))
+      toast(result?.nameError ? passkeyError(result.nameError) : t('Passkey added'))
     } catch (e) {
       if (dismissed(e)) return
       setErr(passkeyError(e))
@@ -192,14 +222,14 @@ function AddPasskeySheet({ state, close, done }) {
   }
   return <>
     <h3>{t('Add a passkey')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{ready
+    {!SUPABASE && <div className="muted small" style={{ marginBottom: 14 }}>{ready
       ? t('Confirmed. Now create the new passkey; your browser will ask where to keep it.')
-      : t('For this device, a security key, a password manager, or your phone through the browser’s own QR code. First confirm that it is you.')}</div>
+      : t('For this device, a security key, a password manager, or your phone through the browser’s own QR code. First confirm that it is you.')}</div>}
     <input className="input" placeholder={t('Name, e.g. Work laptop')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
     <div style={{ height: 12 }} />
     {ready ? <Button variant="primary" icon="plus" disabled={busy} onClick={create}>{t('Create passkey')}</Button>
-      : <ProveOwner passkey={state.passkeys.length > 0} password={state.password} explain={passkeyError}
-        onProof={async proof => setReady(await post('/api/account/passkeys/options', proof))} />}
+      : SUPABASE ? <Button variant="primary" disabled={busy} onClick={prepareWithSession}>{t('Continue')}</Button>
+      : <ProveOwner passkey={state.passkeys.length > 0} password={state.password} explain={passkeyError} onProof={prepare} />}
     {err && <div className="small" role="alert" style={errStyle}>{err}</div>}
   </>
 }

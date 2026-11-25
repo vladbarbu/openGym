@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { api } from '../lib/api.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
@@ -41,8 +42,9 @@ function ResetCodeSheet({ name, email, code, expires, close }) {
   const copy = () => { navigator.clipboard?.writeText(code).catch(() => {}); toast('Copied') }
   return <>
     <h3>Reset code for {name}</h3>
-    <div className="adm-lead">Give them this code. They choose “Sign in with password” → “Have a reset code from your admin?”, enter their name <b>{name}</b>{email && <> (or their sign-in e-mail <b>{email}</b>)</>}, the code and a new password. It works once, until {new Date(expires).toLocaleString()}, and will not be shown again.</div>
-    <button className="adm-code" style={{ fontSize: 'var(--fs-title2)', width: '100%', padding: '14px 0' }} onClick={copy} aria-label="copy code">{code}</button>
+    {SUPABASE ? <div className="adm-lead">Give them this code. Under “Sign in with password” → “Have a reset code from your admin?”, they enter their sign-in e-mail <b>{email}</b>, the code and a new password. The code works once and will not be shown again.</div>
+    : <div className="adm-lead">Give them this code. They choose “Sign in with password” → “Have a reset code from your admin?”, enter their name <b>{name}</b>{email && <> (or their sign-in e-mail <b>{email}</b>)</>}, the code and a new password. It works once, until {new Date(expires).toLocaleString()}, and will not be shown again.</div>}
+    <button className="adm-code" style={{ fontSize: 'var(--fs-title2)', width: '100%', padding: '14px 0', overflowWrap: 'anywhere' }} onClick={copy} aria-label="copy code">{code}</button>
     <div style={{ height: 12 }} />
     <Button variant="primary" onClick={close}>Done</Button>
   </>
@@ -114,7 +116,9 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
   const pwInstance = typeof u.password === 'boolean'
   const resetPassword = () => confirmSheet({
     title: 'Reset ' + u.name + '’s password?',
-    message: 'You get a one-time code to hand them. Their current password stops working now and they are signed out everywhere; their passkeys keep working. They set a new password with the code under “Sign in with password”. It is shown once and is valid for 24 hours.',
+    message: SUPABASE
+      ? 'Give them the one-time code so they can choose a new password. Their current password stops working and they are signed out everywhere.'
+      : 'You get a one-time code to hand them. Their current password stops working now and they are signed out everywhere; their passkeys keep working. They set a new password with the code under “Sign in with password”. It is shown once and is valid for 24 hours.',
     confirmText: 'Create reset code',
     danger: true,
     onConfirm: () => api('/api/admin/user/password-reset', { method: 'POST', body: JSON.stringify({ id: u.id }) })
@@ -123,7 +127,7 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
   })
   // A recovery code (#584): any admin for a profile that is not an admin, the owner for an admin;
   // the owner's own comes from the server command (recover.js). Not for oneself.
-  const canRecover = !u.owner && !u.disabled && u.id !== me?.id && (!u.admin || viewerOwner)
+  const canRecover = !SUPABASE && !u.owner && !u.disabled && u.id !== me?.id && (!u.admin || viewerOwner)
   const makeRecovery = () => confirmSheet({
     title: 'Recovery code for ' + u.name + '?',
     message: 'For someone who lost every way in: their devices and passkey are gone, and they have no password. You get a one-time code to hand them; the device they enter it on gets a new passkey. They are signed out everywhere now. Their passkeys and password stay. It is shown once and is valid for 24 hours.',
@@ -152,14 +156,14 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
       <div className="tile"><div className="l">Measurements</div><div className="v v-sm">{n.measurements}</div></div>
       <div className="tile"><div className="l">Routines</div><div className="v v-sm">{n.routines}</div></div>
       <div className="tile"><div className="l">Last sync</div><div className="v" style={{ fontSize: 'var(--fs-subhead)' }}>{rel(d.lastSync)}</div></div>
-      {typeof d.bytes === 'number' && <div className="tile"><div className="l">On disk</div><div className="v" style={{ fontSize: 'var(--fs-subhead)' }}>{fmtBytes(d.bytes)}</div></div>}
+      {typeof d.bytes === 'number' && <div className="tile"><div className="l">{SUPABASE ? 'Data size' : 'On disk'}</div><div className="v" style={{ fontSize: 'var(--fs-subhead)' }}>{fmtBytes(d.bytes)}</div></div>}
     </div>
     {d.roles && <TrainerRoles id={u.id} name={u.name} roles={d.roles} grants={d.grants} onChanged={onChanged} close={close} />}
     {viewerOwner && !u.owner && !u.disabled && <>
       <button className="btn" style={{ margin: '12px 0 4px' }}
         onClick={() => u.admin
           ? confirmSheet({ title: 'Remove ' + u.name + ' as admin?', message: 'They keep their account and data, but lose this page.', confirmText: 'Remove admin', danger: true, onConfirm: () => setRole(false) })
-          : confirmSheet({ title: 'Make ' + u.name + ' an admin?', message: 'They can see everyone on this instance, disable accounts, hand out invites and set up the Coach. Only you can add or remove admins.', confirmText: 'Make admin', onConfirm: () => setRole(true) })}>
+          : confirmSheet({ title: 'Make ' + u.name + ' an admin?', message: SUPABASE ? 'They can view user data, disable accounts and manage invite codes. Only you can add or remove admins.' : 'They can see everyone on this instance, disable accounts, hand out invites and set up the Coach. Only you can add or remove admins.', confirmText: 'Make admin', onConfirm: () => setRole(true) })}>
         {u.admin ? 'Remove admin' : 'Make admin'}</button>
       <div className="adm-hint">{u.admin ? 'Admins run the instance with you. Remove the role to delete or disable their account.' : 'Admins help run the instance. You stay the owner.'}</div>
       {u.admin && <>
@@ -192,18 +196,18 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
         })}>Delete account</button>
       {view && <button className="btn" style={{ marginBottom: 4 }} onClick={exportUser}>Download their data</button>}
       <div className="adm-hint">Deleting removes the account and every trace of its training history from this server.</div>
-      {pwInstance && <>
+      {pwInstance && (!SUPABASE || (u.email && !u.disabled)) && <>
         <button className="btn" style={{ margin: '14px 0 4px' }} onClick={resetPassword}>Reset password</button>
         <div className="adm-hint">{u.password
           ? 'For a forgotten password: a one-time code lets them choose a new one. Their current password stops working at once.'
-          : 'No password yet. A one-time code lets them set one. That’s the way back in after losing their only passkey.'}</div>
+          : SUPABASE ? 'A one-time code lets them set a password.' : 'No password yet. A one-time code lets them set one. That’s the way back in after losing their only passkey.'}</div>
       </>}
     </>}
     {canRecover && <>
       <button className="btn" style={{ margin: '14px 0 4px' }} onClick={makeRecovery}>Recovery code</button>
       <div className="adm-hint">Lost every device and passkey? A one-time code gives a new device a passkey for this profile. Works with or without password sign-in.</div>
     </>}
-    {u.owner && u.id !== me?.id && <div className="adm-hint" style={{ marginTop: 14 }}>A locked-out owner gets a recovery code from the server itself: <code>docker compose exec api node recover.js "{u.name}"</code></div>}
+    {!SUPABASE && u.owner && u.id !== me?.id && <div className="adm-hint" style={{ marginTop: 14 }}>A locked-out owner gets a recovery code from the server itself: <code>docker compose exec api node recover.js "{u.name}"</code></div>}
     {!view && <div className="adm-hint" style={{ marginTop: 14 }}>Their training data is theirs: it is readable on disk, not in the app. For support, the numbers above are usually enough. People export their own backup in Settings, Data &amp; backup.</div>}
     {view && <h4 className="sec">Workout history</h4>}
     {!view ? null : workouts.length ? <div className="list" style={{ gap: 0 }}>
@@ -308,7 +312,7 @@ function GymNewSheet({ close, done }) {
   </>
 }
 
-function InvitesCard({ invites, reload, inviteOnly }) {
+function InvitesCard({ invites, reload, inviteOnly, onInviteOnlyChange }) {
   const toast = useUI(s => s.toast)
   const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
     .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('Code ' + invite.code + ' created & copied'); reload() })
@@ -320,6 +324,13 @@ function InvitesCard({ invites, reload, inviteOnly }) {
       .then(() => { toast('Code revoked'); reload() }).catch(e => toast(e.message))
   })
   const copy = code => { navigator.clipboard?.writeText(code).catch(() => {}); toast('Copied ' + code) }
+  const toggleInviteOnly = () => confirmSheet({
+    title: inviteOnly ? 'Open sign-up to everyone?' : 'Require a code to sign up?',
+    message: inviteOnly ? 'Anyone can create a profile.' : 'New users need an unused invite code to create a profile.',
+    confirmText: inviteOnly ? 'Open sign-up' : 'Require a code',
+    onConfirm: () => api('/api/admin/invite-only', { method: 'POST', body: JSON.stringify({ invite_only: !inviteOnly }) })
+      .then(r => onInviteOnlyChange(r.invite_only)).catch(e => toast(e.message)),
+  })
   const open = (invites || []).filter(i => !i.usedBy)
   const used = (invites || []).filter(i => i.usedBy)
   return <div className="card">
@@ -328,8 +339,11 @@ function InvitesCard({ invites, reload, inviteOnly }) {
     <div className="adm-lead">
       {inviteOnly
         ? 'Sign-up is invite-only: someone needs one of these codes to create a profile. Each code works once.'
-        : 'Sign-up is open, so codes are optional here. They only record who invited whom.'}
+        : SUPABASE ? 'Anyone can sign up.' : 'Sign-up is open, so codes are optional here. They only record who invited whom.'}
     </div>
+    {onInviteOnlyChange && <Button size="sm" onClick={toggleInviteOnly}>
+      {inviteOnly ? 'Open sign-up' : 'Require invite codes'}
+    </Button>}
     {open.length ? <>
       <div className="adm-group-t">Unused · tap to copy</div>
       {open.map(i => <div key={i.code} className="row between" style={{ padding: '6px 0', borderBottom: 'var(--hair) solid var(--sep)' }}>
@@ -382,20 +396,21 @@ function AuditCard({ tick, owner }) {
       {/* Clearing is the owner's alone: an admin could otherwise erase what they did. */}
       {owner && <button className="iconbtn adm-iconbtn" style={{ color: 'var(--red)' }} onClick={clear} aria-label="clear log"><Icon name="trash" /></button>}</div>
     <div className="adm-lead">
-      Who signed in, what failed, and what an admin changed.
+      {SUPABASE ? 'Changes made by admins and access to training data.' : 'Who signed in, what failed, and what an admin changed.'}
       {meta ? ' ' + fmtNum(meta.total) + ' events'
         + (meta.retention.days ? ', kept for ' + meta.retention.days + ' days' : '')
         + (meta.ip_mode === 'off' ? ', without IP addresses' : '') + '.' : ''}
     </div>
     <div className="chips" style={{ marginBottom: 10 }}>
-      {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
+      {[['', 'All'], ...(!SUPABASE ? [['auth', 'Sign-ins']] : []), ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
         <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{l}</button>)}
     </div>
     {rows.map(e => {
       const line = auditLine(e)
+      const title = e.ev === 'admin.invite-only' ? 'Changed sign-up requirements' : line.title
       return <div key={e.id} className="row between" style={{ padding: '8px 2px', borderBottom: 'var(--hair) solid var(--sep)' }}>
         <div className="grow">
-          <div className="small" style={{ fontWeight: 600 }}>{line.title}
+          <div className="small" style={{ fontWeight: 600 }}>{title}
             {/* a red pill, not a red row: twenty fumbled Face IDs in a row shouldn't read as an incident */}
             {!e.ok && <span className="adm-pill bad" style={{ marginInlineStart: 6 }}>failed</span>}
             {auditCat(e.ev) === 'admin' && <span className="adm-pill acc" style={{ marginInlineStart: 6 }}>admin</span>}</div>
@@ -414,7 +429,8 @@ export default function Admin() {
   const nav = useNavigate()
   // Opened from Settings → AI Coach (the hosted app's way to the Coach, which is the server's):
   // straight to the Coach card rather than the top of the page.
-  const toCoach = useLocation().state?.section === 'coach'
+  const location = useLocation()
+  const toCoach = !SUPABASE && location.state?.section === 'coach'
   const coachRef = useRef(null)
   useEffect(() => {
     if (!toCoach) return
@@ -443,7 +459,14 @@ export default function Admin() {
     .catch(e => setUsersErr(e.message || 'Failed to load'))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
+  useEffect(() => {
+    if (!user?.admin) return
+    loadUsers()
+    loadInvites()
+    if (SUPABASE) return
+    const iv = setInterval(loadUsers, 15000)
+    return () => clearInterval(iv)
+  }, [user?.id, user?.admin])
   if (!user?.admin) return null
 
   // From the list rather than the stored session, which may predate a handover.
@@ -463,23 +486,24 @@ export default function Admin() {
         <div className="sub">{users ? users.length + ' users · ' + activeCount + ' active this week' : usersErr ? 'Could not load' : 'Loading…'}</div></div>
       <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); setTick(n => n + 1) }} aria-label="refresh"><Icon name="reset" /></button>
     </div>
-    <div className="adm-intro">
+    {SUPABASE ? <div className="adm-intro">Every time you open someone’s training data, it’s recorded in the activity log.</div>
+    : <div className="adm-intro">
       Everything about running this instance: who uses it, how they get in, the AI Coach, and what has happened on it. {dataView
         ? 'ADMIN_DATA_VIEW is on, so you can open people’s workouts and weigh-ins. Every look lands in the activity log and in their own sharing log, so be the admin you would want.'
         : 'You run this server. Training data belongs to the people who logged it, so here you see counts, not workouts. It is readable on disk, not in the app.'}
-    </div>
+    </div>}
 
     {usersErr && <div className="card" role="alert" style={{ borderColor: 'var(--red)' }}>
       <div className="row between"><h2 style={{ margin: 0 }}>{users ? 'The last update failed' : 'Could not load the users'}</h2>
         <Button size="sm" icon="reset" onClick={loadUsers}>Try again</Button></div>
       <div className="adm-lead" style={{ marginBottom: 0 }}>
-        {usersErr} {users ? 'The list below is the last one that loaded.' : 'It tries again every 15 seconds.'}
+        {usersErr} {users ? 'The list below is the last one that loaded.' : !SUPABASE && 'It tries again every 15 seconds.'}
       </div>
     </div>}
 
     <div className="tiles" style={{ marginBottom: 12 }}>
       <div className="tile"><div className="l">Users</div><div className="v">{users ? users.length : '–'}</div></div>
-      <div className="tile"><div className="l">Training now</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc-ink)' : undefined }}>{users ? liveUsers.length : '–'}</div></div>
+      {!SUPABASE && <div className="tile"><div className="l">Training now</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc-ink)' : undefined }}>{users ? liveUsers.length : '–'}</div></div>}
       <div className="tile"><div className="l">Active 7 days</div><div className="v">{users ? activeCount : '–'}</div></div>
       <div className="tile"><div className="l">Disabled</div><div className="v">{users ? disabledCount : '–'}</div></div>
     </div>
@@ -496,17 +520,18 @@ export default function Admin() {
 
     {/* The Coach setup. Renders nothing at all unless the instance offers the Coach, so an admin
         page on a box that never enabled it is byte-for-byte the page it was before. */}
-    <div ref={coachRef} className="adm-coach-anchor"><AdminCoach /></div>
+    {!SUPABASE && <div ref={coachRef} className="adm-coach-anchor"><AdminCoach /></div>}
 
-    <InvitesCard invites={invites} reload={loadInvites} inviteOnly={inviteOnly} />
+    <InvitesCard invites={invites} reload={loadInvites} inviteOnly={inviteOnly}
+      onInviteOnlyChange={SUPABASE && viewerOwner ? setInviteOnly : undefined} />
 
     {/* Sign-in with an identity provider; nothing without OIDC_ISSUER. */}
-    <AdminOidc />
+    {!SUPABASE && <AdminOidc />}
 
     {/* The community library's moderation (AdminCommunity.jsx); nothing without LIBRARY=on. */}
-    <AdminCommunity tick={tick} />
+    {!SUPABASE && <AdminCommunity tick={tick} />}
 
-    {trainersOn && <GymsCard users={users || []} tick={tick} />}
+    {!SUPABASE && trainersOn && <GymsCard users={users || []} tick={tick} />}
 
     <div className="card">
       <h2 style={{ margin: 0 }}>Users</h2>

@@ -7,11 +7,12 @@ import { CATEGORY_TEXT, OPTIONAL_TEXT, emptyCoach } from '../lib/coach.js'
 import { DATA_CATEGORIES, OPTIONAL_CATEGORIES, shareOf } from '../../../api/coach/core/categories.js'
 import { HTTP_PROVIDERS } from '../../../api/coach/core/providers.js'
 import { MOBILE } from '../lib/mobile.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { Section, Row, Switch } from './ui.jsx'
 
 /** Whether web research can be offered here, and if not, why not (null when it can). */
 export function webBlocker(config, coachLocal) {
-  if (MOBILE && coachLocal?.mode === 'byok') return HTTP_PROVIDERS[coachLocal.provider]?.web ? null : t('Your AI provider has no web search.')
+  if ((MOBILE || SUPABASE) && coachLocal?.mode === 'byok') return HTTP_PROVIDERS[coachLocal.provider]?.web ? null : t('Your AI provider has no web search.')
   return config?.coach?.web ? null : t('Your server’s admin hasn’t switched this on.')
 }
 

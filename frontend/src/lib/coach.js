@@ -13,6 +13,7 @@
 // is the point of it being separate from them.
 
 import { offlineBuild } from './build-caps.js'
+import { SUPABASE } from './supabase.js'
 import { EXIDX, canonicalExId } from './exercises.js'
 import { modeOf, isBw, isPerSide, cleanupSg } from './history.js'
 import { uid, todayISO, DAYN } from './format.js'
@@ -65,9 +66,10 @@ const coachOf = s => (s.coach = s.coach || emptyCoach())
 // paired to a self-hosted server is an ordinary signed-in profile and takes the web rule; a
 // phone that brought its own API key runs the Coach itself (lib/coach-local.js). Nothing
 // chosen means nothing shown — the same "invisible unless configured" promise the web keeps.
+// Supabase builds offer only the local Coach.
 // openGym Offline (lib/build-caps.js) has no network, so no Coach in any form.
 export const coachAvailable = (config, user, { demo, mobile, coachMode } = {}) =>
-  offlineBuild() ? false : mobile ? (coachMode === 'byok' || !!(config?.coach?.enabled && user))
+  offlineBuild() ? false : SUPABASE ? coachMode === 'byok' : mobile ? (coachMode === 'byok' || !!(config?.coach?.enabled && user))
     : demo ? true : !!(config?.coach?.enabled && user)
 
 // What each data category means, in the user's words. Rendered from the same list the payload

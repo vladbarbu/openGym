@@ -8,6 +8,7 @@
 // Signed in to a server only (the web app, or a phone paired with one). Without a paired Zepp
 // watch it asks the server once at start and when the app comes back, and sends nothing.
 import { api } from './api.js'
+import { SUPABASE } from './supabase.js'
 import { startLinkSync } from './watch-sync.js'
 
 // How often the page looks for the watch's events while it is open. The phone's page sleeps in a
@@ -22,15 +23,18 @@ export function relayChanged () { for (const fn of stateListeners) { try { fn() 
 
 /** The paired watches, for Settings. */
 export async function relayLinks (call = api) {
+  if (SUPABASE) return []
   const r = await call('/api/watch/links')
   return Array.isArray(r?.links) ? r.links : []
 }
 /** A code for the Zepp app's openGym settings page: { code, exp }. */
 export async function relayPairCode (call = api) {
+  if (SUPABASE) return { code: '', exp: 0 }
   const r = await call('/api/watch/pair', { method: 'POST', body: '{}' })
   return { code: String(r?.code || ''), exp: Number(r?.exp) || 0 }
 }
 export async function relayUnlink (id = null, call = api) {
+  if (SUPABASE) return []
   const r = await call('/api/watch/unlink', { method: 'POST', body: JSON.stringify(id ? { id } : {}) })
   relayChanged()
   return Array.isArray(r?.links) ? r.links : []
@@ -90,6 +94,7 @@ export function relayBridge ({ call = api, doc = globalThis.document, pollMs = R
 
 /** Started once by the app: the sync of lib/watch-sync.js over the relay. Returns the stop. */
 export async function startWatchRelay ({ useStore, useUI }) {
+  if (SUPABASE) return () => {}
   const stop = await startLinkSync(relayBridge({ signedIn: () => !!useStore.getState().user }), { useStore, useUI }, { health: false, clips: false })
   // Signed in or out since: asked again.
   const offUser = useStore.subscribe((s, prev) => { if ((s.user?.id || null) !== (prev.user?.id || null)) relayChanged() })

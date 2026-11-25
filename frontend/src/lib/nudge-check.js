@@ -14,6 +14,19 @@
 import { MOBILE } from './mobile.js'
 import { isoOf } from './format.js'
 import { remoteAuth } from './api.js'
+import { SUPABASE, helpers as supabase } from './supabase.js'
+
+export function nudgeCheckAuth() {
+  if (SUPABASE) {
+    const token = supabase.readSession()?.access_token
+    return token ? {
+      server: supabase.URL + '/rest/v1/rpc/nudge_check?date=',
+      headers: { apikey: supabase.KEY, Authorization: 'Bearer ' + token },
+    } : null
+  }
+  const auth = remoteAuth()
+  return auth ? { server: auth.base, headers: auth.headers } : null
+}
 
 // The id ranges syncReminder schedules (lib/mobile.js): workout-day reminders, then nudges.
 export const REMINDER_IDS = [1000, 1999]
@@ -64,7 +77,7 @@ const checkPlugin = () => pluginP || (pluginP = (async () => {
 })().catch(() => null))
 
 /**
- * Hands the plan to the native side, or takes it back: armed only on a paired phone with the
+ * Hands the plan to the native side, or takes it back: armed only on a signed-in phone with the
  * reminder and the missed-day nudge on. Never throws; a phone without the plugin (an older native
  * shell) just goes without the check, as before.
  */
@@ -72,11 +85,11 @@ export async function armNudgeCheck(S, notifications, now = Date.now()) {
   const p = await checkPlugin()
   if (!p) return false
   const r = S?.reminder
-  const auth = remoteAuth()
+  const auth = nudgeCheckAuth()
   const entries = r?.on && r.nudge && auth ? nudgeCheckPlan(notifications, now) : []
   try {
     if (!entries.length) { await p.NudgeCheck.disarm(); return false }
-    await p.NudgeCheck.arm({ server: auth.base, headers: auth.headers, entries })
+    await p.NudgeCheck.arm({ ...auth, entries })
     return true
   } catch { return false }
 }

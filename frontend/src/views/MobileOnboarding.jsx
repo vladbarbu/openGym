@@ -4,6 +4,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
+import { SUPABASE } from '../lib/supabase.js'
+import Login from './Login.jsx'
 import { openLostAccess } from '../components/LostAccess.jsx'
 import { t } from '../lib/i18n.js'
 import BrandLogo from '../components/BrandLogo.jsx'
@@ -179,6 +181,7 @@ export default function MobileOnboarding() {
   const { chooseLocalMode } = useStore()
   // openGym Offline (lib/build-caps.js): there is no server to connect to, so one way in.
   const offline = useOfflineBuild()
+  if (SUPABASE) return <Login />
   const head = <>
     {/* The official lockup (assets/logo), not an icon from the app's set. */}
     <h1 style={{ margin: '0 0 10px', display: 'flex', justifyContent: 'center' }}><BrandLogo size={36} /></h1>

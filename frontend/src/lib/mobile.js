@@ -116,6 +116,26 @@ async function remoteDir() {
   return (await nativePlatform()) === 'ios' ? Directory.LibraryNoCloud : Directory.Data
 }
 
+const SUPABASE_SESSION_FILE = 'opengym-supabase-session.json'
+
+export async function loadSupabaseSessionFile() {
+  if (!(await nativePlatform())) return null
+  try {
+    const { Filesystem, Encoding } = await import('@capacitor/filesystem')
+    const directory = await remoteDir()
+    const result = await Filesystem.readFile({ path: SUPABASE_SESSION_FILE, directory, encoding: Encoding.UTF8 })
+    return JSON.parse(result.data)
+  } catch { return null }
+}
+
+export async function saveSupabaseSessionFile(data) {
+  if (!(await nativePlatform())) return
+  const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
+  const directory = await remoteDir()
+  await Filesystem.writeFile({ path: SUPABASE_SESSION_FILE, directory, data: JSON.stringify(data), encoding: Encoding.UTF8, recursive: true })
+  if (directory === Directory.LibraryNoCloud) await Filesystem.stat({ path: SUPABASE_SESSION_FILE, directory })
+}
+
 export async function loadRemoteFile() {
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')

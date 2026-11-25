@@ -5896,4 +5896,5 @@ export default {
   "Preview on": "Náhled na",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "kratší",
+  "Your key is saved in this browser. Scripts on this site can read it.": "Váš klíč se ukládá v tomto prohlížeči. Skripty na tomto webu ho mohou číst.",
 }

@@ -5896,4 +5896,5 @@ export default {
   "Preview on": "Xem trước trên",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "ngắn hơn",
+  "Your key is saved in this browser. Scripts on this site can read it.": "Khóa của bạn được lưu trong trình duyệt này. Các đoạn mã trên trang này có thể đọc khóa.",
 };

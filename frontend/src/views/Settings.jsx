@@ -185,7 +185,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
   // This profile's passkeys and the code for another device (#95). A change to them is read back
   // here and by the password row, whose "Remove" depends on there being a passkey.
   // On a paired phone only the code for another device uses it (#551).
-  const passkeys = usePasskeys(!!user && !DEMO && (page === 'account'))
+  const passkeys = usePasskeys(!!user && !DEMO && page === 'account' && (!SUPABASE || !MOBILE))
   const [credsV, setCredsV] = useState(0)
   const credsChanged = () => { passkeys.load(); setCredsV(v => v + 1) }
   const { update, importConflict, importBackup, setUnit, resetEverything: resetAll, setUser, pullState, pushState, resetDemo } = useStore()
@@ -462,8 +462,8 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       : t('Deletes your plan, workouts, body weight, photos and videos on this device. This cannot be undone.'),
     confirmText: t('Delete everything'), danger: true,
     onConfirm: () => {
-      if (user) api('/api/coach/forget', { method: 'POST', body: '{}' }).catch(() => {})
-      if (coachLocal?.mode === 'byok') forgetCoach().catch(() => {})
+      if (user && !SUPABASE) api('/api/coach/forget', { method: 'POST', body: '{}' }).catch(() => {})
+      if (SUPABASE || coachLocal?.mode === 'byok') forgetCoach().catch(() => {})
       resetAll()
       nav('/home'); toast(t('All data reset'))
       clearMediaAfterReset(!!user).catch(() => {})
@@ -1363,7 +1363,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       {/* The server: which one, which account, how that stands, "Sync now". A paired phone's
           Admin and Disconnect sit in the same block; a browser's account rows follow in their own. */}
       {user && !DEMO && <ServerSyncSection>
-        {MOBILE && <>
+        {MOBILE && !SUPABASE && <>
           {community && <Row icon="globe" iconTint="var(--blue)" title={t('Community')} subtitle={t('What people on this server shared')} accessory="chevron" onClick={() => nav('/community')} />}
           {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
           {pageVisible('trainer', ctx) && <Row icon="personCircle" iconTint="var(--acc)" title={t('Trainer & gym')} subtitle={t('Who sees what of your training')} accessory="chevron" onClick={() => nav('/settings/trainer')} />}
@@ -1377,9 +1377,9 @@ export default function Settings({ page = null, find = null, via = null, entryKe
 
       {/* account (demo and mobile builds have nothing to sign in to) */}
       {/* A local-only phone has no account to hand another device a code for (#551). */}
-      {!(MOBILE && user) && <Section title={MOBILE ? t('Your data') : DEMO ? t('Demo') : t('Account')}
-        footer={MOBILE ? (offline ? t('This is openGym Offline: Android doesn’t even let it on the internet. Want sync? The normal openGym app can do that, next to this one.') : t('Signing in on your computer too needs your own server. Connect this phone to it, and Add another device then gives the computer a code.')) : null}>
-        {MOBILE ? <>
+      {!(MOBILE && !SUPABASE && user) && <Section title={MOBILE && !SUPABASE ? t('Your data') : DEMO ? t('Demo') : t('Account')}
+        footer={MOBILE && !SUPABASE ? (offline ? t('This is openGym Offline: Android doesn’t even let it on the internet. Want sync? The normal openGym app can do that, next to this one.') : t('Signing in on your computer too needs your own server. Connect this phone to it, and Add another device then gives the computer a code.')) : null}>
+        {MOBILE && !SUPABASE ? <>
           <Row icon="lock" iconTint="var(--acc)" title={t('All data stays on this phone')} subtitle={t('No account, no cloud. Back it up anytime in Data & backup.')} />
           {/* openGym Offline cannot reach a server at all (lib/build-caps.js). */}
           {!offline && <Row icon="cloud" iconTint="var(--indigo)" title={t('Connect to my server')} subtitle={t('Sync this device to your own self-hosted openGym instead.')} accessory="chevron"
@@ -1396,9 +1396,8 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
           {pageVisible('trainer', ctx) && <Row icon="personCircle" iconTint="var(--acc)" title={t('Trainer & gym')} subtitle={t('Who sees what of your training')} accessory="chevron" onClick={() => nav('/settings/trainer')} />}
           {pageVisible('trainer', ctx) && showsDashboard(config) && <Row icon="clipboard" iconTint="var(--orange)" title={t('Trainer dashboard')} subtitle={t('The people you train, and how they are doing')} accessory="chevron" onClick={() => nav('/trainer')} />}
-          {/* The Supabase build signs in by e-mail and password only (lib/supabase.js). */}
-          {!SUPABASE && <>
           <PasskeysRow state={passkeys.st} changed={credsChanged} />
+          {!SUPABASE && <>
           <OidcRow state={passkeys.st} changed={credsChanged} />
           <DeviceLinkRow state={passkeys.st} />
           <Row icon="qr" iconTint="var(--blue)" title={t('Pair the mobile app')} subtitle={t('Connect the openGym app on your phone to this account.')} accessory="chevron"
@@ -1408,13 +1407,13 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={signOutHere} />
           <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
           <AccountIdRow id={user.id} />
-        </> : webauthnOK() ? <>
-          <Row icon="plusCircle" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
+        </> : !(MOBILE && SUPABASE) && webauthnOK() ? <>
+          {!SUPABASE && <Row icon="plusCircle" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />}
           <Row icon="fingerprint" iconTint="var(--blue)" title={t('Sign in with passkey')} accessory="chevron" onClick={passkeySignIn} />
           {/* The Login screen offers both of these; a guest who skipped it had no way to either from here. */}
           {pwOn && <Row icon="plusCircle" iconTint="var(--orange)" title={t('Create profile with a password')} accessory="chevron" onClick={openPasswordRegister} />}
           {pwOn && <Row icon="key" iconTint="var(--orange)" title={t('Sign in with password')} accessory="chevron" onClick={() => openPasswordSignIn()} />}
-          <Row icon="qr" iconTint="var(--blue)" title={t('Use a code from your other device')} accessory="chevron" onClick={openDeviceLinkRedeem} />
+          {!SUPABASE && <Row icon="qr" iconTint="var(--blue)" title={t('Use a code from your other device')} accessory="chevron" onClick={openDeviceLinkRedeem} />}
           <KeptChangesRows />
         </> : pwOn ? <>
           {/* No passkeys in this browser (plain http on a LAN address, say): a password is the way in. */}

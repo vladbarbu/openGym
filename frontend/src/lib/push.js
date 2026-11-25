@@ -2,12 +2,13 @@
 // server-side per user, same as everything else under /api).
 import { api } from './api.js'
 import { SUPABASE } from './supabase.js'
+import { VAPID_PUBLIC_KEY } from './supabase-push.js'
 
 // main.jsx registers the service worker on https only, so on any other origin there is no
 // worker and `navigator.serviceWorker.ready` never settles — the toggle looked usable and hung.
 const secureOrigin = () => typeof location === 'undefined' || location.protocol === 'https:'
-// ponytail: no push in the Supabase build yet (the monthly recap Worker comes next).
-export const pushSupported = () => !SUPABASE && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && secureOrigin()
+export const pushSupported = () => import.meta.env.VITE_MOBILE !== '1' && (!SUPABASE || !!VAPID_PUBLIC_KEY)
+  && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && secureOrigin()
 
 const urlBase64ToUint8Array = b64 => {
   const padded = (b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')

@@ -1,12 +1,12 @@
-// Where the phone keeps the user's own API key: the platform's secure storage — the Keychain on
-// iOS, the Keystore-backed EncryptedSharedPreferences on Android — and nowhere else. Never in
-// S (which syncs and exports), never in localStorage (which the WebView evicts and any page on
-// the same origin can read), never in the coach device file next to it.
+// The phone keeps the user's own API key in Keychain or Keystore-backed secure storage.
+// The key is separate from the device file and the training log, which syncs and exports.
 //
 // The plugin is imported lazily and every call is wrapped: on a plain web dev run it stores
 // to localStorage by its own admission, and in a test there is no platform at all. In both
 // cases the fallback is a process-local map that forgets on reload, which is the honest
 // behaviour for a place that cannot keep a secret.
+import { webCoach, coachStorageKey } from './coach-device.js'
+
 const KEY = 'coach.apiKey'
 const memory = new Map()
 
@@ -60,6 +60,26 @@ export async function secureRemove(key) {
   memory.delete(key)
 }
 
-export const getApiKey = () => secureGet(KEY)
-export const setApiKey = value => secureSet(KEY, value)
-export const clearApiKey = () => secureRemove(KEY)
+// ponytail: localStorage keeps the user's own key on their device. Any script on this origin can read it.
+const browserKeys = new Map()
+
+export async function getApiKey(userId) {
+  if (!webCoach()) return secureGet(KEY)
+  const key = coachStorageKey(KEY, userId)
+  if (browserKeys.has(key)) return browserKeys.get(key)
+  try { return localStorage.getItem(key) || null } catch { return null }
+}
+
+export async function setApiKey(value, userId) {
+  if (!webCoach()) return secureSet(KEY, value)
+  const v = String(value || '').trim()
+  if (!v) return clearApiKey(userId)
+  const key = coachStorageKey(KEY, userId)
+  try { localStorage.setItem(key, v); browserKeys.delete(key) } catch { browserKeys.set(key, v) }
+}
+
+export async function clearApiKey(userId) {
+  if (!webCoach()) return secureRemove(KEY)
+  const key = coachStorageKey(KEY, userId)
+  try { localStorage.removeItem(key); browserKeys.delete(key) } catch { browserKeys.set(key, null) }
+}

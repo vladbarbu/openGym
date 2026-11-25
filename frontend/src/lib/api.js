@@ -16,8 +16,8 @@ export const bio = () => (IS_APPLE ? t('Face ID / Touch ID') : IS_ANDROID ? t('f
 // navigator.credentials: some browsers expose WebAuthn while that generic Credential Management
 // API check produces a false negative (notably Chrome on iOS). The real create/get calls still run
 // only after the user chooses a passkey action and surface any genuine browser error there.
-// The Supabase build has no passkeys (Supabase Auth signs in by e-mail and password).
-export const webauthnOK = () => !SUPABASE && typeof window.PublicKeyCredential !== 'undefined'
+// Supabase on a phone: in-app passkeys need a native plugin and an associated domain (not yet).
+export const webauthnOK = () => !(SUPABASE && MOBILE) && typeof window.PublicKeyCredential !== 'undefined'
 
 // The paired mobile app (lib/remote.js) is the only caller of these — everywhere else stays on
 // same-origin cookies, so remoteBase/remoteToken stay empty and api() behaves exactly as before.
@@ -164,6 +164,7 @@ const timedOut = () => failure(t('The server did not answer in time.'), 'timeout
  * Errors carry { status, code } like api()'s: the server's code on a refusal (media-missing).
  */
 export async function apiBlob(path, { expectSize, idleMs = 30000, fetchImpl = globalThis.fetch } = {}) {
+  if (SUPABASE) return supabaseApi(path, { method: 'GET', expectSize, idleMs, fetchImpl })
   if (MOBILE && !remoteBase) throw notPaired()
   const max = typeof expectSize === 'number' && expectSize >= 0 ? expectSize + 1024 : Infinity
   const ctl = typeof AbortController === 'function' ? new AbortController() : null
@@ -220,6 +221,7 @@ export async function apiBlob(path, { expectSize, idleMs = 30000, fetchImpl = gl
  * `idleMs` without progress; no status at all when the network failed.
  */
 export function apiUpload(path, blob, mime, { onProgress, idleMs = 60000, XHR = globalThis.XMLHttpRequest, headers = null } = {}) {
+  if (SUPABASE) return supabaseApi(path, { method: 'PUT', body: blob, headers: { 'Content-Type': mime, ...headers }, onProgress, idleMs })
   if (MOBILE && !remoteBase) return Promise.reject(notPaired())
   return new Promise((resolve, reject) => {
     const xhr = new XHR()
@@ -392,17 +394,20 @@ const bufToB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).repla
 const b64uToBuf = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)).buffer
 
 function toCreationOptions(o) {
+  if (window.PublicKeyCredential?.parseCreationOptionsFromJSON) return window.PublicKeyCredential.parseCreationOptionsFromJSON(o)
   o.challenge = b64uToBuf(o.challenge)
   o.user.id = b64uToBuf(o.user.id)
   ;(o.excludeCredentials || []).forEach(c => { c.id = b64uToBuf(c.id) })
   return o
 }
 function toRequestOptions(o) {
+  if (window.PublicKeyCredential?.parseRequestOptionsFromJSON) return window.PublicKeyCredential.parseRequestOptionsFromJSON(o)
   o.challenge = b64uToBuf(o.challenge)
   ;(o.allowCredentials || []).forEach(c => { c.id = b64uToBuf(c.id) })
   return o
 }
 function credToJSON(cred) {
+  if (typeof cred.toJSON === 'function') return cred.toJSON()
   const r = cred.response
   const out = {
     id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,

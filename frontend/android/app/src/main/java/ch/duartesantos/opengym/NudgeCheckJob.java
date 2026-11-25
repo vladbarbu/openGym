@@ -74,7 +74,8 @@ public class NudgeCheckJob extends JobService {
     private static JSONObject ask(String server, String date, JSONObject headers) {
         HttpURLConnection c = null;
         try {
-            URL url = new URL(server + "/api/nudge-check?date=" + URLEncoder.encode(date, "UTF-8"));
+            String prefix = server.endsWith("?date=") ? server : server + "/api/nudge-check?date=";
+            URL url = new URL(prefix + URLEncoder.encode(date, "UTF-8"));
             c = (HttpURLConnection) url.openConnection();
             c.setConnectTimeout(15_000);
             c.setReadTimeout(15_000);

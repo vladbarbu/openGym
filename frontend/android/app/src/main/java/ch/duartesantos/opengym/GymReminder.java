@@ -476,8 +476,9 @@ final class GymReminder {
             return t;
         });
         long t0 = System.currentTimeMillis();
+        String prefix = base.endsWith("?date=") ? base : base + "/api/nudge-check?date=";
         Future<Boolean> f = ex.submit(() -> {
-            HttpURLConnection c = (HttpURLConnection) new URL(base + "/api/nudge-check?date=" + URLEncoder.encode(today, "UTF-8")).openConnection();
+            HttpURLConnection c = (HttpURLConnection) new URL(prefix + URLEncoder.encode(today, "UTF-8")).openConnection();
             try {
                 c.setConnectTimeout((int) SERVER_CHECK_MS);
                 c.setReadTimeout((int) SERVER_CHECK_MS);

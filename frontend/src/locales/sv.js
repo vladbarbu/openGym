@@ -5977,4 +5977,5 @@ export default {
   "Preview on": "Förhandsvisa på",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "kortare",
+  "Your key is saved in this browser. Scripts on this site can read it.": "Din nyckel sparas i den här webbläsaren. Skript på den här webbplatsen kan läsa den.",
 }

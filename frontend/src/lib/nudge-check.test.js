@@ -7,6 +7,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ MOBILE: true, auth: null, arm: vi.fn(async () => {}), disarm: vi.fn(async () => {}), registered: 0 }))
 vi.mock('./mobile.js', () => ({ get MOBILE() { return mocks.MOBILE } }))
 vi.mock('./api.js', () => ({ remoteAuth: () => mocks.auth }))
+vi.mock('./supabase.js', () => ({
+  get SUPABASE() { return !!mocks.supabaseSession },
+  helpers: { URL: 'https://sb.test', KEY: 'publishable', readSession: () => mocks.supabaseSession },
+}))
 vi.mock('@capacitor/core', () => ({
   registerPlugin: name => {
     mocks.registered++
@@ -27,6 +31,7 @@ const tomorrow = { date: '2026-10-14', at: at('2026-10-14', '08:00').getTime(), 
 const S = (reminder = { on: true, nudge: true, time: '08:00' }) => ({ reminder })
 
 beforeEach(() => {
+  mocks.supabaseSession = null
   mocks.MOBILE = true
   mocks.auth = { base: 'https://gym.example.com', headers: { Authorization: 'Bearer tok' } }
   mocks.arm.mockClear(); mocks.disarm.mockClear()
@@ -68,6 +73,15 @@ describe('armNudgeCheck', () => {
     expect(await armNudgeCheck(S(), scheduled, NOW)).toBe(true)
     expect(mocks.arm).toHaveBeenCalledWith({ server: 'https://gym.example.com', headers: { Authorization: 'Bearer tok' }, entries: [today, tomorrow] })
     expect(mocks.disarm).not.toHaveBeenCalled()
+  })
+  it('hands Supabase RPC credentials and the full URL prefix to the native check', async () => {
+    mocks.supabaseSession = { access_token: 'sb-access' }
+    expect(await armNudgeCheck(S(), scheduled, NOW)).toBe(true)
+    expect(mocks.arm).toHaveBeenCalledWith({
+      server: 'https://sb.test/rest/v1/rpc/nudge_check?date=',
+      headers: { apikey: 'publishable', Authorization: 'Bearer sb-access' },
+      entries: [today, tomorrow],
+    })
   })
   it('takes it back when there is nothing to check: not paired, the nudge or the reminder off, nothing scheduled', async () => {
     for (const [state, list, auth] of [[S(), scheduled, null], [S({ on: true, nudge: false }), scheduled, mocks.auth], [S({ on: false, nudge: true }), scheduled, mocks.auth], [S(), [], mocks.auth]]) {

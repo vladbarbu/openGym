@@ -6,6 +6,7 @@
 // by the same text and flash it (views/Settings.jsx). settings-pages.test.jsx renders every page
 // and checks that each entry below really is a row there.
 import { t } from '../lib/i18n.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { ACCENT_NAMES } from '../lib/format.js'
 import { MODULES } from '../lib/modules.js'
 import { OFFLINE_OFF_MODULES } from '../lib/build-caps.js'
@@ -85,7 +86,7 @@ export function pageVisible(page, ctx) {
   // A page of a module that is off (ctx.mod answers isOn for this profile; absent: all on).
   if (PAGES[page]?.mod && ctx.mod && !ctx.mod(PAGES[page].mod)) return false
   if (page === 'reminders') return !!(ctx.user || ctx.mobile)
-  if (page === 'coach') return !!ctx.mobile && !ctx.offline
+  if (page === 'coach') return !!(ctx.mobile || SUPABASE) && !ctx.offline
   // The phone app's network log: there only (a browser has its own developer tools for that).
   if (page === 'network') return !!ctx.mobile
   // openGym Offline (lib/build-caps.js) has no network: nothing that needs a server or a connection.
@@ -105,7 +106,7 @@ export function pageVisible(page, ctx) {
   // A Zepp OS watch reaches openGym through a server (lib/watch-relay.js). Signed in, the page pairs
   // one; a phone on its own gets the page too, saying why it needs a server and how to connect
   // (Discord, ravk_: on three Android phones the page was simply not there).
-  if (page === 'zepp') return !ctx.demo && (!!ctx.user || !!ctx.mobile)
+  if (page === 'zepp') return !SUPABASE && !ctx.demo && (!!ctx.user || !!ctx.mobile)
   // The phone app only: a browser cannot watch where you are with the page closed.
   if (page === 'gym' || page === 'gym-find' || page === 'gym-edit') return !!ctx.mobile && ctx.gymReminder !== false
   // The health store of the phone this runs on (unknown counts as yes, as for the watch).
@@ -342,7 +343,7 @@ export const SEARCH = [
   { page: 'about', title: 'In Chrome or Edge: the install icon in the address bar', icon: 'share', tint: 'var(--blue)', kw: 'install app home screen tip pwa desktop', when: c => c.installTip && c.desktopWeb },
   // Account
   { page: 'account', title: 'Sync now', net: true, icon: 'reset', tint: 'var(--acc)', kw: 'server sync upload refresh status connection', when: c => !!c.user && !c.demo && c.synced },
-  { page: 'account', title: 'Cloudflare Access', net: true, icon: 'key', tint: 'var(--orange)', kw: 'cloudflare access zero trust service token header proxy', when: c => c.mobile && !!c.user && !c.demo && c.synced },
+  { page: 'account', title: 'Cloudflare Access', net: true, icon: 'key', tint: 'var(--orange)', kw: 'cloudflare access zero trust service token header proxy', when: c => !SUPABASE && c.mobile && !!c.user && !c.demo && c.synced },
   { page: 'account', title: 'Passkeys', icon: 'fingerprint', tint: 'var(--acc)', kw: 'passkey security login', when: signedInWeb },
   { page: 'zepp', title: 'Pair a watch', net: true, icon: 'watch', tint: 'var(--orange)', kw: 'zepp amazfit watch pair balance gtr gts active t-rex bip cheetah falcon', when: c => !!c.user && !c.demo },
   { page: 'zepp', title: 'Connect to my server', net: true, icon: 'cloud', tint: 'var(--indigo)', kw: 'zepp server connect', when: c => !c.user },
@@ -362,22 +363,22 @@ export const SEARCH = [
   { page: 'live', title: 'Next exercise', icon: 'skipForward', tint: 'var(--blue)', kw: 'live widget lock screen dynamic island notification buttons next exercise skip' },
   { page: 'live', title: 'Pause', icon: 'pause', tint: 'var(--grey)', kw: 'live widget lock screen dynamic island notification buttons pause workout' },
   { page: 'live', title: 'Show a strip in the workout', icon: 'phoneScreen', tint: 'var(--green)', kw: 'live widget lock screen dynamic island notification strip card in app workout' },
-  { page: 'account', title: 'Add another device', net: true, icon: 'qr', tint: 'var(--blue)', kw: 'device link code phone computer', when: c => !!c.user && !c.demo },
-  { page: 'account', title: 'Pair the mobile app', icon: 'qr', tint: 'var(--blue)', kw: 'pair phone app android iphone', when: signedInWeb },
-  { page: 'account', title: 'Password', icon: 'key', tint: 'var(--orange)', kw: 'password login', when: c => signedInWeb(c) && c.pwOn },
-  { page: 'account', title: 'Sign out', icon: 'signOut', tint: 'var(--red)', kw: 'log out logout sign out', when: signedInWeb },
-  { page: 'account', title: 'Sign out everywhere', icon: 'shield', tint: 'var(--red)', kw: 'log out all devices sessions', when: signedInWeb },
+  { page: 'account', title: 'Add another device', net: true, icon: 'qr', tint: 'var(--blue)', kw: 'device link code phone computer', when: c => !SUPABASE && !!c.user && !c.demo },
+  { page: 'account', title: 'Pair the mobile app', icon: 'qr', tint: 'var(--blue)', kw: 'pair phone app android iphone', when: c => !SUPABASE && signedInWeb(c) },
+  { page: 'account', title: 'Password', icon: 'key', tint: 'var(--orange)', kw: 'password login', when: c => !SUPABASE && signedInWeb(c) && c.pwOn },
+  { page: 'account', title: 'Sign out', icon: 'signOut', tint: 'var(--red)', kw: 'log out logout sign out', when: c => (SUPABASE || !c.mobile) && !!c.user && !c.demo },
+  { page: 'account', title: 'Sign out everywhere', icon: 'shield', tint: 'var(--red)', kw: 'log out all devices sessions', when: c => (SUPABASE || !c.mobile) && !!c.user && !c.demo },
   { page: 'account', title: 'Delete my account', icon: 'trash', tint: 'var(--red)', kw: 'delete remove close erase account profile gdpr', when: c => !!c.user && !c.demo },
   { page: 'account', title: 'Choose a photo', icon: 'image', tint: 'var(--acc)', kw: 'profile picture avatar photo icon face', when: c => !c.demo },
   { page: 'account', title: 'Pick an icon', icon: 'smile', tint: 'var(--orange)', kw: 'profile picture avatar icon emoji face', when: c => !c.demo },
   { page: 'account', title: 'Badges on your profile', icon: 'medal', tint: 'var(--yellow)', mod: 'motivation', kw: 'badges pin profile medals', when: c => !c.demo },
   { page: 'account', title: 'Account ID', icon: 'personCircle', tint: 'var(--grey)', kw: 'id uid admin account', when: c => !!c.user && !c.demo },
   { page: 'account', title: 'Admin dashboard', icon: 'crown', tint: 'var(--indigo)', kw: 'admin users dashboard', when: c => !!c.user?.admin && !c.demo },
-  { page: 'account', title: 'Disconnect', net: true, icon: 'signOut', tint: 'var(--red)', kw: 'disconnect server local', when: c => c.mobile && !!c.user },
-  { page: 'account', title: 'Connect to my server', net: true, icon: 'cloud', tint: 'var(--indigo)', kw: 'server sync self-hosted connect', when: c => c.mobile && !c.user },
+  { page: 'account', title: 'Disconnect', net: true, icon: 'signOut', tint: 'var(--red)', kw: 'disconnect server local', when: c => !SUPABASE && c.mobile && !!c.user },
+  { page: 'account', title: 'Connect to my server', net: true, icon: 'cloud', tint: 'var(--indigo)', kw: 'server sync self-hosted connect', when: c => !SUPABASE && c.mobile && !c.user },
   { page: 'account', title: 'Sign in with passkey', icon: 'fingerprint', tint: 'var(--blue)', kw: 'login sign in log in passkey', when: c => !c.mobile && !c.demo && !c.user && c.webauthn },
-  { page: 'account', title: 'Sign in with password', icon: 'key', tint: 'var(--orange)', kw: 'login sign in log in password', when: c => !c.mobile && !c.demo && !c.user && c.pwOn },
-  { page: 'account', title: 'Create passkey profile', icon: 'plusCircle', tint: 'var(--acc)', kw: 'register account sign up create profile', when: c => !c.mobile && !c.demo && !c.user && c.webauthn },
+  { page: 'account', title: 'Sign in with password', icon: 'key', tint: 'var(--orange)', kw: 'login sign in log in password', when: c => (SUPABASE || !c.mobile) && !c.demo && !c.user && c.pwOn },
+  { page: 'account', title: 'Create passkey profile', icon: 'plusCircle', tint: 'var(--acc)', kw: 'register account sign up create profile', when: c => !SUPABASE && !c.mobile && !c.demo && !c.user && c.webauthn },
   { page: 'account', title: 'Reset demo data', icon: 'reset', tint: 'var(--blue)', kw: 'demo reset example', when: c => c.demo },
 ]
 

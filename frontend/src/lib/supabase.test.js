@@ -27,6 +27,25 @@ describe('the Supabase backend behind api()', () => {
     expect((await supabaseApi('/api/me')).user.name).toBe('Alex')
   })
 
+  it('marks owners as admins, passes the invite code to sign-up and routes media by hash', async () => {
+    const { supabaseApi } = await load()
+    localStorage.setItem('gym_sb_session', JSON.stringify(session()))
+    vi.stubGlobal('fetch', vi.fn(async u => answer(200, u.includes('/profiles?') ? [{ role: 'owner' }] : null)))
+    expect((await supabaseApi('/api/me')).user).toEqual({ id: 'u1', name: 'Alex', admin: true, owner: true })
+
+    const fetch = vi.fn(async () => answer(403, { error_code: 'hook_error', msg: 'a valid invite code is required' }))
+    vi.stubGlobal('fetch', fetch)
+    await expect(supabaseApi('/api/register/password', { method: 'POST', body: JSON.stringify({ name: 'A', password: 'pw', email: 'a@b.c', code: ' ab12 ' }) }))
+      .rejects.toMatchObject({ data: { code: 'invite' } })
+    expect(JSON.parse(fetch.mock.calls[0][1].body).data.invite).toBe('AB12')
+
+    // A raw upload reaches the media route with its hash, the Blob left in init.
+    const hash = 'a'.repeat(64)
+    await expect(supabaseApi('/api/media/' + 'z'.repeat(64), { method: 'PUT', body: new Blob(['x']) })).rejects.toMatchObject({ status: 404 })
+    vi.stubGlobal('fetch', vi.fn(async () => answer(200, { Key: 'media/u1/' + hash })))
+    await supabaseApi('/api/media/' + hash, { method: 'PUT', body: new Blob(['x'], { type: 'image/png' }), headers: { 'Content-Type': 'image/png' } }).catch(e => { if (e.status === 404) throw e })
+  })
+
   it('maps wrong credentials to the code the password sheet words', async () => {
     const { supabaseApi } = await load()
     vi.stubGlobal('fetch', vi.fn(async () => answer(400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' })))

@@ -15,7 +15,7 @@ import { MOBILE } from './mobile.js'
 import { t } from './i18n-core.js'
 import { isoOf } from './format.js'
 import { excusedOn } from './day-notes.js'
-import { remoteAuth } from './api.js'
+import { nudgeCheckAuth } from './nudge-check.js'
 import { readForgottenPrefs } from './forgotten-workout.js'
 
 export const GYM_KEY = 'gym_reminder_v1'
@@ -252,15 +252,14 @@ export async function saveGymConfig(next, S = null) {
 let lastStatus = ''
 let lastServer = null
 /**
- * Tells the native side which server this phone is paired with (and the headers a request to it
+ * Tells the native side which server this phone is signed in to (and the headers a request to it
  * carries), so that on arrival it can ask whether today was trained on another device that has
  * not synced here yet (GET /api/nudge-check, bounded to 3 s, see GymReminder.java and
  * GymReminderPlugin.swift). A phone without a server sends '' and the phone decides alone. The
  * native side keeps it encrypted (Android Keystore, iOS Keychain), never in the page's storage.
  */
 async function pushGymServer(p) {
-  const auth = remoteAuth()
-  const arg = auth ? { server: auth.base, headers: auth.headers } : { server: '' }
+  const arg = nudgeCheckAuth() || { server: '' }
   const key = JSON.stringify(arg)
   if (key === lastServer) return
   try { await p.GymReminder.server(arg); lastServer = key } catch { /* an older native shell: no server check */ }

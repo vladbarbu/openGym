@@ -24,7 +24,8 @@ function RegisterSheet({ close }) {
   // A password is offered only where the instance allows it (#118), and is the only choice in a
   // browser that cannot make a passkey. Where both work, the passkey stays the first one.
   const pwOn = passwordOn(config)
-  const [how, setHow] = useState(webauthnOK() ? 'passkey' : 'password')
+  const passkeySignup = !SUPABASE && webauthnOK()
+  const [how, setHow] = useState(passkeySignup ? 'passkey' : 'password')
   const ref = useRef(null)
   useEffect(() => { setTimeout(() => ref.current?.focus(), 250) }, [])
   // Boot already fetched this; retry here only if that attempt failed, so the invite field still
@@ -41,12 +42,12 @@ function RegisterSheet({ close }) {
       else { await pullState(); useUI.getState().toast(t('Welcome, {0}', u.name)) }
     } catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(passkeyError(e, t('Registration failed'))) }
   }
-  const choose = pwOn && webauthnOK() && <>
+  const choose = pwOn && passkeySignup && <>
     <Segmented options={[{ value: 'passkey', label: t('Passkey'), icon: 'fingerprint' }, { value: 'password', label: t('Password'), icon: 'key' }]}
       value={how} onChange={setHow} />
     <div style={{ height: 12 }} />
   </>
-  if (pwOn && how === 'password') return <>
+  if (SUPABASE || (pwOn && how === 'password')) return <>
     <h3>{t('Create your profile')}</h3>
     {choose}
     <div className="muted small" style={{ marginBottom: 14 }}>{SUPABASE ? t('Pick a name, your e-mail and a password. You sign in with the e-mail and password.') : t('Pick a name and a password. You sign in with both.')}</div>
@@ -134,12 +135,15 @@ export default function Login() {
     </div>
   )
 
-  // Supabase build (lib/supabase.js): e-mail and password are the only way in.
   if (SUPABASE) return (
     <div className="narrow" style={wrap}>
       {head}
       <div className="muted" style={{ marginBottom: 34 }}>{t('Your workouts. Your weights. Your profile.')}</div>
-      <Button variant="primary" icon="key" onClick={() => openPasswordSignIn()}>{t('Sign in with password')}</Button>
+      {webauthnOK() && <>
+        <Button variant="primary" icon="fingerprint" onClick={signIn}>{t('Sign in with passkey')}</Button>
+        <div style={{ height: 10 }} />
+      </>}
+      <Button variant={webauthnOK() ? undefined : 'primary'} icon="key" onClick={() => openPasswordSignIn()}>{t('Sign in with password')}</Button>
       <div style={{ height: 10 }} />
       <Button icon="plusCircle" onClick={register}>{t('Create new profile')}</Button>
       {canGuest && <><div style={{ height: 10 }} /><Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button></>}

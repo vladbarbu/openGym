@@ -39,6 +39,33 @@ describe('Sign in with OpenRouter, web', () => {
     const bad = await finishWebSignIn({ save: () => { throw new Error('must not save') }, loc: { href: 'https://gym.example/?code=c1&state=evil', pathname: '/' }, history: { replaceState() {} }, fetch: keyFetch() })
     expect(bad.ok).toBe(false)
   })
+
+  it('returns to the browser Coach setup under the account that started sign-in', async () => {
+    const page = { origin: 'https://gym.example', pathname: '/openGym/' }
+    const saved = []
+    const paths = []
+    const calls = []
+    const callback = async userId => {
+      let went
+      await startWebSignIn({ back: '#/coach/setup', userId: 'alice', loc: page, go: url => { went = new URL(url) } })
+      expect(went.searchParams.get('callback_url')).toBe('https://gym.example/openGym/')
+      const search = '?code=c1&state=' + went.searchParams.get('state')
+      return finishWebSignIn({
+        userId,
+        save: key => saved.push(key),
+        loc: { ...page, search, href: page.origin + page.pathname + search },
+        history: { replaceState: (_state, _title, path) => paths.push(path) },
+        fetch: keyFetch(calls)
+      })
+    }
+    expect((await callback('bob')).ok).toBe(false)
+    expect(calls).toHaveLength(0)
+    expect(saved).toEqual([])
+    expect(await callback('alice')).toEqual({ ok: true, back: '#/coach/setup' })
+    expect(paths).toEqual(['/openGym/#/coach/setup', '/openGym/#/coach/setup'])
+    expect(calls.map(c => c.url)).toEqual(['https://openrouter.ai/api/v1/auth/keys'])
+    expect(saved).toEqual(['sk-or-v1-zzz'])
+  })
 })
 
 describe('Sign in with OpenRouter, phone', () => {

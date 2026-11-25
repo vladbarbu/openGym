@@ -9,6 +9,7 @@ import { t, tn } from '../lib/i18n.js'
 import { fmtAgo, changeCount } from '../lib/format.js'
 import { passkeyLogin, passkeyError, webauthnOK } from '../lib/api.js'
 import { MOBILE, shareExport } from '../lib/mobile.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { offlineBuild } from '../lib/build-caps.js'
 import { syncMedia } from '../lib/media-sync.js'
 import { DEMO } from '../lib/demo.js'
@@ -18,6 +19,7 @@ import { passwordOn, openPasswordSignIn } from './PasswordAuth.jsx'
 import { Section, Row, Button } from './ui.jsx'
 
 const ui = () => useUI.getState()
+const pairedBuild = () => MOBILE && !SUPABASE
 const toast = m => ui().toast(m)
 // Whether this browser has a way to sign in at all: a passkey, or a password on an instance that
 // offers one (#118) — which is also what a browser without passkey support has left.
@@ -55,7 +57,7 @@ export function useOnline() {
    network, which decides whether "offline" is the device or the server. Every state that is not
    'ok' says the changes are kept on this device — that is the one thing the person needs to hear
    first. */
-export function connectionView(sync, { mobile = MOBILE, online = isOnline(), offline = offlineBuild() } = {}) {
+export function connectionView(sync, { mobile = pairedBuild(), online = isOnline(), offline = offlineBuild() } = {}) {
   if (!sync) return null
   const err = sync.lastError || {}
   // A device that says it has no network is offline whatever the last request found: said the
@@ -120,10 +122,12 @@ export async function syncNowWithToast() {
 // A phone whose server refuses it, or that an earlier version unpaired: the connect sheet, with
 // the address it had where it still has one. The same account merges what the phone kept.
 export function pairAgain() {
+  if (SUPABASE) return signInAgain()
   const server = useStore.getState().sync?.server || ''
   ui().openSheet(close => <ConnectSheet close={close} initialUrl={server} again />)
 }
 export function connectServer() {
+  if (SUPABASE) return signInAgain()
   ui().openSheet(close => <ConnectSheet close={close} />)
 }
 
@@ -218,13 +222,13 @@ export function OwedSheet({ kind, count: count0, media: media0 = 0, exportBackup
     {/* It names the button below it: Try again, or Pair again / Sign in where the server refuses. */}
     <div className="muted small" style={{ marginBottom: 18, lineHeight: 1.5 }}>
       {refused
-        ? (MOBILE
+        ? (pairedBuild()
           ? t('Pair again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.')
           : t('Sign in again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.'))
         : t('Try again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.')}
     </div>
-    {refused && MOBILE && <><button className="btn primary" disabled={busy} onClick={() => { close(); pairAgain() }}>{t('Pair again')}</button><div style={{ height: 8 }} /></>}
-    {refused && !MOBILE && canSignIn() && <><button className="btn primary" disabled={busy} onClick={() => { close(); signInAgain() }}>{pwOn() ? t('Sign in') : t('Sign in with passkey')}</button><div style={{ height: 8 }} /></>}
+    {refused && pairedBuild() && <><button className="btn primary" disabled={busy} onClick={() => { close(); pairAgain() }}>{t('Pair again')}</button><div style={{ height: 8 }} /></>}
+    {refused && !pairedBuild() && canSignIn() && <><button className="btn primary" disabled={busy} onClick={() => { close(); signInAgain() }}>{pwOn() ? t('Sign in') : t('Sign in with passkey')}</button><div style={{ height: 8 }} /></>}
     {!refused && <><button className="btn primary" disabled={busy} onClick={retry}>{busy ? t('Syncing…') : t('Try again')}</button><div style={{ height: 8 }} /></>}
     {media > 0 && exportBackupZip
       ? <Button icon="share" disabled={busy} onClick={exportBackupZip}>{t('Export with photos & videos (.zip)')}</Button>
@@ -274,9 +278,9 @@ export function ServerSyncSection({ children }) {
       subtitle={t('Signed in as {0}', user.name)} />
     <Row icon={view.icon} iconTint={TINT[view.tone]} title={view.line} subtitle={sub} className="sync-status" />
     <Row icon="reset" iconTint="var(--acc)" title={busy ? t('Syncing…') : t('Sync now')} onClick={now} />
-    {MOBILE && <Row icon="key" iconTint="var(--orange)" title={t('Cloudflare Access')} accessory="chevron"
+    {pairedBuild() && <Row icon="key" iconTint="var(--orange)" title={t('Cloudflare Access')} accessory="chevron"
       onClick={() => ui().openSheet(close => <CfAccessSheet close={close} server={sync.server || ''} />)} />}
-    {sync.status === 'auth' && (MOBILE
+    {sync.status === 'auth' && (pairedBuild()
       ? <Row icon="qr" iconTint="var(--indigo)" title={t('Pair again')} subtitle={t('Your changes are kept here, and merged into your account once it is paired again.')} accessory="chevron" onClick={pairAgain} />
       : canSignIn() && <Row icon={pwOn() ? 'person' : 'fingerprint'} iconTint="var(--blue)" title={pwOn() ? t('Sign in') : t('Sign in with passkey')} subtitle={t('Your changes are kept here, and merged into your account once you are signed in again.')} accessory="chevron" onClick={signInAgain} />)}
     {/* another account's, kept when this one signed in over a copy that still owed them */}

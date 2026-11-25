@@ -5930,4 +5930,5 @@ export default {
   "Preview on": "预览位置",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "缩短一点",
+  "Your key is saved in this browser. Scripts on this site can read it.": "你的密钥保存在此浏览器中。此网站上的脚本可以读取它。",
 }

@@ -5930,4 +5930,5 @@ export default {
   "Preview on": "प्रीव्यू यहां",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "थोड़ा छोटा",
+  "Your key is saved in this browser. Scripts on this site can read it.": "आपकी कुंजी इस ब्राउज़र में सहेजी जाती है। इस साइट की स्क्रिप्ट इसे पढ़ सकती हैं।",
 }

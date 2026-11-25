@@ -5895,4 +5895,5 @@ export default {
   "Preview on": "Pratinjau di",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "sedikit lebih singkat",
+  "Your key is saved in this browser. Scripts on this site can read it.": "Kunci Anda disimpan di browser ini. Skrip di situs ini dapat membacanya.",
 };

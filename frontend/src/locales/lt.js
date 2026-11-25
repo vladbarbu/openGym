@@ -5926,4 +5926,5 @@ export default {
   "Preview on": "Peržiūra",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "šiek tiek trumpiau",
+  "Your key is saved in this browser. Scripts on this site can read it.": "Tavo raktas saugomas šioje naršyklėje. Šios svetainės scenarijai gali jį perskaityti.",
 }

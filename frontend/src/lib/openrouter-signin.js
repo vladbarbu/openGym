@@ -1,9 +1,10 @@
 // "Sign in with OpenRouter" in the app: OpenRouter's official OAuth PKCE flow
-// (api/coach/core/openrouter-oauth.js) wired to the two places that hold a key.
+// (api/coach/core/openrouter-oauth.js).
 //
 //   Web (the admin card): the page goes to openrouter.ai and comes back to this same address with
 //   ?code=…; the verifier waits in sessionStorage meanwhile, and the key is filed on the server as
 //   the instance's OpenRouter key.
+//   Supabase web: the same redirect, with the key saved in this browser under the current user.
 //   Phone (bring your own key): the system browser session goes to openrouter.ai and comes back
 //   through https://opengym.ch/openrouter/ to opengym://openrouter, which the session catches; the
 //   key goes into secure storage like a pasted one. Headless mode (a code to paste) is the
@@ -16,20 +17,22 @@ const MAX_AGE_MS = 10 * 60000
 const store = () => { try { return globalThis.sessionStorage || null } catch { return null } }
 
 /** Web: send this page to openrouter.ai. `back` is the hash route to land on afterwards. */
-export async function startWebSignIn({ back = '#/admin', go = url => window.location.assign(url), loc = window.location } = {}) {
+export async function startWebSignIn({ back = '#/admin', userId, go = url => window.location.assign(url), loc = window.location } = {}) {
   const p = await makePkce()
-  store()?.setItem(PENDING, JSON.stringify({ verifier: p.verifier, state: p.state, at: Date.now(), back }))
+  const storage = store()
+  if (!storage) throw new Error('session storage is unavailable')
+  storage.setItem(PENDING, JSON.stringify({ verifier: p.verifier, state: p.state, at: Date.now(), back, userId }))
   go(authUrl({ callbackUrl: loc.origin + loc.pathname, challenge: p.challenge, state: p.state }))
 }
 
 /** Web: is this page load the way back from openrouter.ai? */
-export const isWebReturn = (loc = window.location) => /[?&]code=/.test(loc.search || '') && !!store()?.getItem(PENDING)
+export const isWebReturn = (loc = window.location) => /[?&](code|error)=/.test(loc.search || '') && !!store()?.getItem(PENDING)
 
 /**
  * Web: finish the way back. Exchanges the code, hands the key to `save`, and puts the address
  * back the way it was. Resolves { ok, back } or { ok:false, error }.
  */
-export async function finishWebSignIn({ save, loc = window.location, history = window.history, fetch: fetchImpl } = {}) {
+export async function finishWebSignIn({ save, userId, loc = window.location, history = window.history, fetch: fetchImpl } = {}) {
   const raw = store()?.getItem(PENDING)
   store()?.removeItem(PENDING)
   let pending = null
@@ -38,6 +41,7 @@ export async function finishWebSignIn({ save, loc = window.location, history = w
   // The code must never stay in the address bar or the history.
   try { history.replaceState(null, '', loc.pathname + (pending?.back || '#/')) } catch { /* old browser */ }
   if (!pending || Date.now() - pending.at > MAX_AGE_MS) return { ok: false, error: 'the sign-in took too long; start again' }
+  if (pending.userId !== userId) return { ok: false, error: 'that sign-in was not started here; start again' }
   const cb = readCallback(address, pending.state)
   if (cb.error) return { ok: false, error: cb.error === 'state' ? 'that sign-in was not started here; start again' : 'the sign-in was cancelled' }
   const r = await exchangeCode({ code: cb.code, verifier: pending.verifier, ...(fetchImpl ? { fetch: fetchImpl } : {}) })

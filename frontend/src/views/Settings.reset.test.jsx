@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings.jsx'
+import { onRoot } from './settings-pages.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -11,7 +12,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 // reaches every device that syncs with it — and the Coach's own files have to go too: the
 // per-profile one on the server, and the device one when the Coach runs with the phone's own key.
 const mocks = vi.hoisted(() => {
-  const state = { S: null, user: null, coachLocal: null }
+  const state = { S: null, user: null, coachLocal: null, supabase: false }
   state.replaceState = vi.fn()
   state.resetEverything = vi.fn()
   state.confirmSheet = vi.fn()
@@ -51,6 +52,10 @@ vi.mock('../lib/push.js', () => ({ pushSupported: () => false, enablePush: vi.fn
 vi.mock('../lib/wakelock.js', () => ({ wakeLockSupported: () => false }))
 vi.mock('../lib/mobile.js', () => ({ MOBILE: false, isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), syncReminder: vi.fn() }))
 vi.mock('../lib/coach-api.js', () => ({ forgetCoach: (...a) => mocks.forgetCoach(...a) }))
+vi.mock('../lib/supabase.js', async importOriginal => ({
+  ...await importOriginal(),
+  get SUPABASE() { return mocks.supabase },
+}))
 vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => null }))
 vi.mock('../sheets.jsx', () => ({
   starterPlanSheet: vi.fn(), confirmSheet: (...a) => mocks.confirmSheet(...a), importFromApp: vi.fn(),
@@ -67,6 +72,7 @@ beforeEach(() => {
   }
   mocks.user = null
   mocks.coachLocal = null
+  mocks.supabase = false
   mocks.replaceState.mockClear()
   mocks.resetEverything.mockClear()
   mocks.confirmSheet.mockClear()
@@ -92,6 +98,21 @@ const openDialog = () => {
 const serverForgetCalls = () => mocks.api.mock.calls.filter(([path]) => path === '/api/coach/forget')
 
 describe('Settings — reset everything', () => {
+  it('shows the browser Coach setup entry in Supabase', () => {
+    mocks.supabase = true
+    expect(onRoot('coach', { mobile: false, offline: false })).toBe(true)
+  })
+
+  it('clears the Supabase coach locally without calling the server coach', () => {
+    mocks.supabase = true
+    mocks.user = { id: 'u1', name: 'Ana' }
+    mount()
+    const dialog = openDialog()
+    act(() => { dialog.onConfirm() })
+    expect(mocks.forgetCoach).toHaveBeenCalledTimes(1)
+    expect(serverForgetCalls()).toHaveLength(0)
+  })
+
   it('guest: says the wipe is local, resets to the defaults, never calls the Coach', () => {
     mount()
     const dialog = openDialog()

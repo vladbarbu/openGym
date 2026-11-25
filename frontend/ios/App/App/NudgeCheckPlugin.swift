@@ -95,13 +95,14 @@ public class NudgeCheckPlugin: CAPPlugin, CAPBridgedPlugin {
         // The days whose notifications fire within the next twelve hours: what a check now can still save.
         let soon = upcoming(config).filter { (($0["at"] as? Double ?? 0) / 1000) - Date().timeIntervalSince1970 < 12 * 3600 }
         let headers = config["headers"] as? [String: String] ?? [:]
+        let endpoint = server.hasSuffix("?date=") ? server : server + "/api/nudge-check"
         let group = DispatchGroup()
         var tasks: [URLSessionDataTask] = []
         var settled: Set<String> = []
         let lock = NSLock()
         for entry in soon {
             guard let date = entry["date"] as? String,
-                  var parts = URLComponents(string: server + "/api/nudge-check") else { continue }
+                  var parts = URLComponents(string: endpoint) else { continue }
             parts.queryItems = [URLQueryItem(name: "date", value: date)]
             guard let url = parts.url else { continue }
             var request = URLRequest(url: url, timeoutInterval: 20)

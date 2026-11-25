@@ -11,5 +11,6 @@
 <full-backup-content>
     <exclude domain="file" path="opengym-media/" />
     <exclude domain="file" path="opengym-remote.json" />
+    <exclude domain="file" path="opengym-supabase-session.json" />
     <exclude domain="sharedpref" path="opengym_gym_reminder.xml" />
 </full-backup-content>

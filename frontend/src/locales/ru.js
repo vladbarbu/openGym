@@ -5934,4 +5934,5 @@ export default {
   "Preview on": "Предпросмотр на",
   // 1.4.5 UX round, P2: timed holds in the finish summary (next hold is shorter)
   "shorter": "чуть покороче",
+  "Your key is saved in this browser. Scripts on this site can read it.": "Ваш ключ сохраняется в этом браузере. Скрипты на этом сайте могут его прочитать.",
 }

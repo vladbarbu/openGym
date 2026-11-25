@@ -5,8 +5,9 @@ import { restSoundOf } from '../lib/rest-sounds.js'
 import { toneFor, REST_KINDS } from '../lib/user-sounds.js'
 import { api } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
-import { deviceId } from '../lib/push.js'
+import { deviceId, pushSupported } from '../lib/push.js'
 import { MOBILE } from '../lib/mobile.js'
+import { SUPABASE } from '../lib/supabase.js'
 import { armRestAlert, bindNativeRest, disarmRestAlert, holdRestAlert, toneNative } from '../lib/rest-alert.js'
 import { useStore } from './useStore.js'
 import { REST_MAX } from '../lib/duration.js'
@@ -45,11 +46,11 @@ const autoMustWait = () => {
 // timer this browser's own: a desktop tab finishing its rest on screen used to cancel the
 // alert the phone in the gym was waiting for, because the server held one timer per account.
 // `next` names the set waiting ("Bench press, 80 kg × 8"), which the push carries as its body.
-const pushRestTimer = (sec, next = '') => { if (useStore.getState().user) api('/api/push/rest-timer', { method: 'POST', body: JSON.stringify({ seconds: sec, deviceId: deviceId(), ...(next ? { next } : {}) }) }).catch(() => {}) }
+const pushRestTimer = (sec, next = '') => { if ((!SUPABASE || pushSupported()) && useStore.getState().user) api('/api/push/rest-timer', { method: 'POST', body: JSON.stringify({ seconds: sec, deviceId: deviceId(), ...(next ? { next } : {}) }) }).catch(() => {}) }
 // The set this rest is for, in a line (lib/rest-next.js): read when the end is booked or shown,
 // so a set edited during the rest is named as it now stands.
 const nextLine = () => { try { return restNextLine(useStore.getState().S, useUI.getState().timer?.forIdx) } catch { return '' } }
-const cancelPushRestTimer = () => { if (useStore.getState().user && !useStore.getState().tourSandbox) api('/api/push/rest-timer/cancel', { method: 'POST', body: JSON.stringify({ deviceId: deviceId() }) }).catch(() => {}) }
+const cancelPushRestTimer = () => { if ((!SUPABASE || pushSupported()) && useStore.getState().user && !useStore.getState().tourSandbox) api('/api/push/rest-timer/cancel', { method: 'POST', body: JSON.stringify({ deviceId: deviceId() }) }).catch(() => {}) }
 
 // Books the end of a rest with whatever can announce it while the app is not looking: in the
 // Android app a native alarm and the countdown notification, everywhere else (and wherever that
